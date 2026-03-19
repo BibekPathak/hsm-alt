@@ -1,14 +1,11 @@
 use std::env;
-use std::net::SocketAddr;
-use tracing_subscriber::fmt::format::FmtSpan;
-use mpc_enclave::ipc::run_enclave_server;
+use mpc_enclave::ipc::Enclave;
+use parking_lot::RwLock;
+use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_target(true)
-        .with_level(true)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     let node_id: u32 = env::var("NODE_ID")
@@ -31,8 +28,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .unwrap_or(7002);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-
     tracing::info!(
         "Starting MPC Enclave - Node ID: {}, Threshold: {}/{}",
         node_id,
@@ -40,7 +35,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         total_shares
     );
 
-    run_enclave_server(addr, node_id, threshold, total_shares).await?;
+    let enclave = Arc::new(RwLock::new(Enclave::new(node_id, threshold, total_shares)));
+
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(async move {
+        if let Err(e) = mpc_enclave::ipc::run_server(enclave, port).await {
+            tracing::error!("Server error: {}", e);
+        }
+    });
 
     Ok(())
 }

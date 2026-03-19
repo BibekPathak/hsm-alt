@@ -4,19 +4,31 @@ package mpc;
 
 option go_package = "github.com/yourorg/hsm/api/gen";
 
-#######################################
-# Enclave IPC (Go Node → Rust Enclave)#
-#######################################
+// Enclave IPC (Go Node → Rust Enclave)
 
 service EnclaveService {
     rpc Initialize(InitRequest) returns (InitResponse);
     rpc GetStatus(StatusRequest) returns (StatusResponse);
-    rpc StartDKG(DKGRequest) returns (DKGResponse);
+    
+    // DKG - Distributed Key Generation
+    rpc DKGStart(DKGStartRequest) returns (DKGStartResponse);
+    rpc DKGRound1(DKGRound1Request) returns (DKGRound1Response);
+    rpc DKGRound2(DKGRound2Request) returns (DKGRound2Response);
+    rpc DKGComplete(DKGCompleteRequest) returns (DKGCompleteResponse);
+    
+    // Signing
+    rpc SignStart(SignStartRequest) returns (SignStartResponse);
+    rpc SignRound1(SignRound1Request) returns (SignRound1Response);
+    rpc SignRound2(SignRound2Request) returns (SignRound2Response);
+    
+    // Key Management
     rpc GetPublicKey(PublicKeyRequest) returns (PublicKeyResponse);
-    rpc Sign(SignRequest) returns (SignResponse);
-    rpc StartResharing(ResharingRequest) returns (ResharingResponse);
+    rpc GetKeyShare(KeyShareRequest) returns (KeyShareResponse);
     rpc EvolveKey(EpochRequest) returns (EpochResponse);
-    rpc GetAttestation(AttestRequest) returns (AttestResponse);
+    rpc Reshare(ReshareRequest) returns (ReshareResponse);
+    
+    // Attestation
+    rpc Attest(AttestRequest) returns (AttestResponse);
 }
 
 message InitRequest {
@@ -36,22 +48,84 @@ message StatusRequest {}
 message StatusResponse {
     string state = 1;
     uint32 epoch = 2;
-    string public_key = 3;
+    bytes public_key = 3;
     bool initialized = 4;
+    uint32 threshold = 5;
+    uint32 total_shares = 6;
 }
 
-message DKGRequest {
-    repeated bytes round1_messages = 1;
-    repeated bytes commitments = 2;
-    map<uint32, bytes> peer_messages = 3;
+message DKGStartRequest {
+    uint32 min_signers = 1;
+    uint32 max_signers = 2;
 }
 
-message DKGResponse {
+message DKGStartResponse {
     bool success = 1;
     string error = 2;
-    bytes round1_message = 3;
+    uint32 round = 3;
+    bytes round1_data = 4;
+}
+
+message DKGRound1Request {
+    uint32 from_node = 1;
+    repeated bytes commitments = 2;
+}
+
+message DKGRound1Response {
+    bool success = 1;
+    string error = 2;
+    uint32 round = 3;
     bytes share = 4;
     repeated bytes commitments = 5;
+}
+
+message DKGRound2Request {
+    map<uint32, bytes> participant_shares = 1;
+}
+
+message DKGRound2Response {
+    bool success = 1;
+    string error = 2;
+    bytes public_key = 3;
+}
+
+message DKGCompleteRequest {}
+
+message DKGCompleteResponse {
+    bool success = 1;
+    string error = 2;
+    bytes public_key = 3;
+}
+
+message SignStartRequest {
+    bytes message = 1;
+    repeated uint32 signers = 2;
+}
+
+message SignStartResponse {
+    bool success = 1;
+    string error = 2;
+    uint32 round = 3;
+}
+
+message SignRound1Request {}
+
+message SignRound1Response {
+    bool success = 1;
+    string error = 2;
+    bytes nonce_commitment = 3;
+    bytes commitment = 4;
+}
+
+message SignRound2Request {
+    bytes signing_package = 1;
+}
+
+message SignRound2Response {
+    bool success = 1;
+    string error = 2;
+    bytes partial_signature = 3;
+    bytes commitment = 4;
 }
 
 message PublicKeyRequest {}
@@ -60,29 +134,11 @@ message PublicKeyResponse {
     bytes public_key = 1;
 }
 
-message SignRequest {
-    bytes message = 1;
-    repeated uint32 signer_ids = 2;
-}
+message KeyShareRequest {}
 
-message SignResponse {
-    bool success = 1;
-    string error = 2;
-    bytes partial_signature = 3;
-}
-
-message ResharingRequest {
-    repeated bytes old_commitments = 1;
-    uint32 new_threshold = 2;
-    uint32 new_total = 3;
-    map<uint32, bytes> peer_messages = 4;
-}
-
-message ResharingResponse {
-    bool success = 1;
-    string error = 2;
-    bytes new_share = 3;
-    repeated bytes new_commitments = 4;
+message KeyShareResponse {
+    bytes key_share = 1;
+    uint32 index = 2;
 }
 
 message EpochRequest {}
@@ -94,6 +150,17 @@ message EpochResponse {
     bytes new_commitment = 4;
 }
 
+message ReshareRequest {
+    uint32 new_threshold = 1;
+    uint32 new_total = 2;
+}
+
+message ReshareResponse {
+    bool success = 1;
+    string error = 2;
+    bytes new_share = 3;
+}
+
 message AttestRequest {}
 
 message AttestResponse {
@@ -101,17 +168,12 @@ message AttestResponse {
     bytes measurement = 2;
 }
 
-#######################################
-# Node-to-Node Communication          #
-#######################################
+// Node-to-Node Communication
 
-service MPCNodeService {
+service NodeService {
     rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
-    rpc DKGRound1(DKGMessage) returns (DKGMessage);
-    rpc DKGRound2(DKGMessage) returns (DKGMessage);
-    rpc SigningRound1(SignMessage) returns (SignMessage);
-    rpc SigningRound2(SignMessage) returns (SignMessage);
-    rpc ResharingRound(ResharingMessage) returns (ResharingMessage);
+    rpc DKGMessage(NodeMessage) returns (NodeMessage);
+    rpc SignMessage(NodeMessage) returns (NodeMessage);
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
 
@@ -125,32 +187,14 @@ message HandshakeResponse {
     bool accepted = 1;
     uint32 node_id = 2;
     string cluster_id = 3;
+    bytes public_key = 4;
 }
 
-message DKGMessage {
-    uint32 round = 1;
+message NodeMessage {
+    string message_type = 1;
     uint32 from_node = 2;
     uint32 to_node = 3;
-    bytes message = 4;
-    repeated bytes commitments = 5;
-    uint64 timestamp = 6;
-}
-
-message SignMessage {
-    uint32 round = 1;
-    uint32 from_node = 2;
-    uint32 to_node = 3;
-    bytes message = 4;
-    bytes partial_signature = 5;
-    repeated uint32 signers = 6;
-    uint64 timestamp = 7;
-}
-
-message ResharingMessage {
-    uint32 from_node = 1;
-    uint32 to_node = 2;
-    bytes old_share = 3;
-    bytes new_commitment = 4;
+    bytes payload = 4;
     uint64 timestamp = 5;
 }
 
@@ -165,9 +209,7 @@ message HeartbeatResponse {
     bool healthy = 3;
 }
 
-#######################################
-# Admin / Operator API                #
-#######################################
+// Admin / Operator API
 
 service OperatorService {
     rpc CreateCluster(CreateClusterRequest) returns (CreateClusterResponse);

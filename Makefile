@@ -13,7 +13,7 @@ RUST_TARGET := target/release
 
 # Project variables
 BIN_DIR := bin
-ENCLAVE_NAME := mpc_enclave
+ENCLAVE_NAME := mpc-enclave
 NODE_NAME := mpc_node
 
 all: build

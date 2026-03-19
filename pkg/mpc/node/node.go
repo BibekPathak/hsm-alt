@@ -167,8 +167,18 @@ func (n *MPCNode) GetStatus() (NodeState, uint32, []byte) {
 	return n.state, 0, nil
 }
 
-func (n *MPCNode) GetPublicKey(ctx context.Context) ([]byte, error) {
-	return n.enclave.GetPublicKey(ctx)
+func (n *MPCNode) RunDKG(ctx context.Context) error {
+	n.logger.Info("Starting DKG as coordinator")
+
+	minSigners := uint32(n.config.Threshold)
+	maxSigners := uint32(n.config.TotalNodes)
+
+	if err := n.enclave.StartDKG(ctx, minSigners, maxSigners); err != nil {
+		return fmt.Errorf("DKG start failed: %w", err)
+	}
+
+	n.logger.Info("DKG completed successfully")
+	return nil
 }
 
 func (n *MPCNode) Sign(ctx context.Context, message []byte, signers []uint32) ([]byte, error) {
@@ -179,20 +189,27 @@ func (n *MPCNode) Sign(ctx context.Context, message []byte, signers []uint32) ([
 	n.setState(StateSigning)
 	defer n.setState(StateReady)
 
-	partialSig, err := n.enclave.Sign(ctx, message, signers)
+	nonceCommit, _, err := n.enclave.SignRound1(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sign round1 failed: %w", err)
 	}
 
-	// TODO: Collect partial signatures from other nodes and aggregate
+	n.logger.Info("Round 1 complete",
+		zap.Uint32("node_id", n.config.NodeID),
+		zap.Binary("nonce_commitment", nonceCommit))
+
+	partialSig, _, err := n.enclave.SignRound2(ctx, message)
+	if err != nil {
+		return nil, fmt.Errorf("sign round2 failed: %w", err)
+	}
 
 	return partialSig, nil
 }
 
-func (n *MPCNode) StartDKG(ctx context.Context, participants []uint32) error {
+func (n *MPCNode) StartDKG(ctx context.Context, minSigners, maxSigners uint32) error {
 	n.setState(StateKeyGeneration)
 
-	err := n.enclave.StartDKG(ctx, participants)
+	err := n.enclave.StartDKG(ctx, minSigners, maxSigners)
 	if err != nil {
 		n.setState(StateFailed)
 		return err
