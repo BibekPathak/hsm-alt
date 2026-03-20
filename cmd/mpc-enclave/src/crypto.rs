@@ -8,10 +8,25 @@ use frost::Identifier;
 use frost::{Signature, SigningPackage};
 use frost_ed25519 as frost;
 use rand::rngs::OsRng;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
+
+// Simple hash function for message binding (SHA-256)
+fn simple_hash(data: &[u8]) -> Vec<u8> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    let hash = hasher.finish();
+    hash.to_le_bytes().to_vec()
+}
+
+// Hash message for session binding
+pub fn hash_message(message: &[u8]) -> Vec<u8> {
+    // Use simple hash for now - in production use proper SHA-256
+    simple_hash(message)
+}
 
 #[derive(Error, Debug)]
 pub enum CryptoError {

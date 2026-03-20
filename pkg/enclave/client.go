@@ -41,6 +41,7 @@ type DkgStartResponse struct {
 }
 
 type DKGPart1Request struct {
+	SessionID  string `json:"session_id"`
 	MinSigners uint32 `json:"min_signers"`
 	MaxSigners uint32 `json:"max_signers"`
 }
@@ -53,6 +54,7 @@ type DKGPart1Response struct {
 }
 
 type DKGPart2Request struct {
+	SessionID      string            `json:"session_id"`
 	Round1Packages map[uint32][]byte `json:"round1_packages"`
 }
 
@@ -64,6 +66,7 @@ type DKGPart2Response struct {
 }
 
 type DKGPart3Request struct {
+	SessionID      string            `json:"session_id"`
 	Round1Packages map[uint32][]byte `json:"round1_packages"`
 	Round2Packages map[uint32][]byte `json:"round2_packages"`
 }
@@ -75,24 +78,53 @@ type DKGPart3Response struct {
 	PubkeyPackage []byte `json:"pubkey_package"`
 }
 
+type SignRound1Request struct {
+	SessionID string `json:"session_id"`
+}
+
+type SignStartRequest struct {
+	SessionID    string   `json:"session_id"`
+	Message      []byte   `json:"message"`
+	Participants []uint32 `json:"participants"`
+}
+
+type SignStartResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
+}
+
 type SignRound1Response struct {
 	Success         bool   `json:"success"`
+	Error           string `json:"error"`
 	NonceCommitment []byte `json:"nonce_commitment"`
 	Commitment      []byte `json:"commitment"`
 }
 
 type SignRound2Request struct {
+	SessionID      string `json:"session_id"`
 	SigningPackage []byte `json:"signing_package"`
 }
 
 type SignRound2Response struct {
 	Success          bool   `json:"success"`
+	Error            string `json:"error"`
 	PartialSignature []byte `json:"partial_signature"`
 	Commitment       []byte `json:"commitment"`
 }
 
 type PublicKeyResponse struct {
 	PublicKey []byte `json:"public_key"`
+}
+
+type AggregateRequest struct {
+	Message           []byte            `json:"message"`
+	PartialSignatures map[uint32][]byte `json:"partial_signatures"`
+}
+
+type AggregateResponse struct {
+	Success   bool   `json:"success"`
+	Error     string `json:"error"`
+	Signature []byte `json:"signature"`
 }
 
 func NewClient(addr string) (*Client, error) {
@@ -175,8 +207,9 @@ func (c *Client) StartDKG(ctx context.Context, minSigners, maxSigners uint32) er
 	return nil
 }
 
-func (c *Client) DKGPart1(ctx context.Context, minSigners, maxSigners uint32) ([]byte, []byte, error) {
+func (c *Client) DKGPart1(ctx context.Context, sessionID string, minSigners, maxSigners uint32) ([]byte, []byte, error) {
 	req := DKGPart1Request{
+		SessionID:  sessionID,
 		MinSigners: minSigners,
 		MaxSigners: maxSigners,
 	}
@@ -193,8 +226,9 @@ func (c *Client) DKGPart1(ctx context.Context, minSigners, maxSigners uint32) ([
 	return resp.SecretPackage, resp.Round1Package, nil
 }
 
-func (c *Client) DKGPart2(ctx context.Context, secretPackage []byte, round1Packages map[uint32][]byte) ([]byte, map[uint32][]byte, error) {
+func (c *Client) DKGPart2(ctx context.Context, sessionID string, secretPackage []byte, round1Packages map[uint32][]byte) ([]byte, map[uint32][]byte, error) {
 	req := DKGPart2Request{
+		SessionID:      sessionID,
 		Round1Packages: round1Packages,
 	}
 	resp := &DKGPart2Response{}
@@ -210,8 +244,9 @@ func (c *Client) DKGPart2(ctx context.Context, secretPackage []byte, round1Packa
 	return resp.SecretPackage, resp.Round2Packages, nil
 }
 
-func (c *Client) DKGPart3(ctx context.Context, secretPackage []byte, round1Packages, round2Packages map[uint32][]byte) ([]byte, []byte, error) {
+func (c *Client) DKGPart3(ctx context.Context, sessionID string, secretPackage []byte, round1Packages, round2Packages map[uint32][]byte) ([]byte, []byte, error) {
 	req := DKGPart3Request{
+		SessionID:      sessionID,
 		Round1Packages: round1Packages,
 		Round2Packages: round2Packages,
 	}
@@ -238,22 +273,42 @@ func (c *Client) GetPublicKey(ctx context.Context) ([]byte, error) {
 	return resp.PublicKey, nil
 }
 
-func (c *Client) SignRound1(ctx context.Context) ([]byte, []byte, error) {
+func (c *Client) SignStart(ctx context.Context, sessionID string, message []byte, participants []uint32) error {
+	req := SignStartRequest{
+		SessionID:    sessionID,
+		Message:      message,
+		Participants: participants,
+	}
+	resp := &SignStartResponse{}
+
+	if err := c.doRequest(ctx, "POST", "/sign/start", req, resp); err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("sign start failed: %s", resp.Error)
+	}
+
+	return nil
+}
+
+func (c *Client) SignRound1(ctx context.Context, sessionID string) ([]byte, []byte, error) {
+	req := SignRound1Request{SessionID: sessionID}
 	resp := &SignRound1Response{}
 
-	if err := c.doRequest(ctx, "POST", "/sign/round1", nil, resp); err != nil {
+	if err := c.doRequest(ctx, "POST", "/sign/round1", req, resp); err != nil {
 		return nil, nil, err
 	}
 
 	if !resp.Success {
-		return nil, nil, fmt.Errorf("sign round1 failed")
+		return nil, nil, fmt.Errorf("sign round1 failed: %s", resp.Error)
 	}
 
 	return resp.NonceCommitment, resp.Commitment, nil
 }
 
-func (c *Client) SignRound2(ctx context.Context, signingPackage []byte) ([]byte, []byte, error) {
-	req := SignRound2Request{SigningPackage: signingPackage}
+func (c *Client) SignRound2(ctx context.Context, sessionID string, signingPackage []byte) ([]byte, []byte, error) {
+	req := SignRound2Request{SessionID: sessionID, SigningPackage: signingPackage}
 	resp := &SignRound2Response{}
 
 	if err := c.doRequest(ctx, "POST", "/sign/round2", req, resp); err != nil {
@@ -261,10 +316,36 @@ func (c *Client) SignRound2(ctx context.Context, signingPackage []byte) ([]byte,
 	}
 
 	if !resp.Success {
-		return nil, nil, fmt.Errorf("sign round2 failed")
+		return nil, nil, fmt.Errorf("sign round2 failed: %s", resp.Error)
 	}
 
 	return resp.PartialSignature, resp.Commitment, nil
+}
+
+func (c *Client) GetPubkeyPackage(ctx context.Context) ([]byte, error) {
+	resp := &PublicKeyResponse{}
+	if err := c.doRequest(ctx, "GET", "/public-key", nil, resp); err != nil {
+		return nil, err
+	}
+	return resp.PublicKey, nil
+}
+
+func (c *Client) AggregateSignatures(ctx context.Context, message []byte, partialSignatures map[uint32][]byte) ([]byte, error) {
+	req := AggregateRequest{
+		Message:           message,
+		PartialSignatures: partialSignatures,
+	}
+	resp := &AggregateResponse{}
+
+	if err := c.doRequest(ctx, "POST", "/aggregate", req, resp); err != nil {
+		return nil, err
+	}
+
+	if !resp.Success {
+		return nil, fmt.Errorf("aggregate failed: %s", resp.Error)
+	}
+
+	return resp.Signature, nil
 }
 
 func (c *Client) Sign(ctx context.Context, message []byte, signers []uint32) ([]byte, error) {

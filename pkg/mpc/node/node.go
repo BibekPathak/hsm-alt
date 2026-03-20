@@ -2,13 +2,16 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/yourorg/hsm/api/gen"
 	"github.com/yourorg/hsm/pkg/config"
 	"github.com/yourorg/hsm/pkg/enclave"
-	"github.com/yourorg/hsm/pkg/mpc/protocol"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,19 +35,53 @@ type MPCNode struct {
 	state       NodeState
 	peers       map[uint32]*Peer
 	enclave     *enclave.Client
-	dkgSession  *protocol.DKGSession
-	signSession *protocol.SigningSession
+	dkgSession  *dkgSessionInfo
+	signSession *signingSessionInfo
 
 	mu     sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
+type dkgSessionInfo struct {
+	sessionID      string
+	minSigners     uint32
+	maxSigners     uint32
+	secretPkg1     []byte
+	secretPkg2     []byte
+	round1Packages map[uint32][]byte
+	round2Packages map[uint32][]byte
+	startTime      uint64
+	round          uint32
+}
+
 type Peer struct {
 	NodeID   uint32
 	Endpoint string
 	conn     *grpc.ClientConn
-	client   protocol.MPCNodeServiceClient
+	client   gen.NodeServiceClient
+}
+
+func (p *Peer) SendSignMessage(ctx context.Context, msgType string, payload []byte) (*gen.NodeMessage, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("no client connection")
+	}
+	return p.client.SignMessage(ctx, &gen.NodeMessage{
+		MessageType: msgType,
+		FromNode:    p.NodeID,
+		Payload:     payload,
+	})
+}
+
+func (p *Peer) SendDKGMessage(ctx context.Context, msgType string, payload []byte) (*gen.NodeMessage, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("no client connection")
+	}
+	return p.client.DKGMessage(ctx, &gen.NodeMessage{
+		MessageType: msgType,
+		FromNode:    p.NodeID,
+		Payload:     payload,
+	})
 }
 
 func NewNode(cfg *config.NodeConfig, logger *zap.Logger) (*MPCNode, error) {
@@ -73,6 +110,8 @@ func (n *MPCNode) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize enclave: %w", err)
 	}
 
+	go n.startGRPCServer()
+
 	n.connectToPeers()
 
 	n.setState(StateReady)
@@ -82,6 +121,22 @@ func (n *MPCNode) Start(ctx context.Context) error {
 	go n.runMessageLoop()
 
 	return nil
+}
+
+func (n *MPCNode) startGRPCServer() {
+	lis, err := net.Listen("tcp", n.config.ListenAddr)
+	if err != nil {
+		n.logger.Fatal("Failed to listen", zap.Error(err))
+		return
+	}
+
+	grpcServer := grpc.NewServer()
+	RegisterNodeServiceServer(grpcServer, n)
+
+	n.logger.Info("gRPC server listening", zap.String("addr", n.config.ListenAddr))
+	if err := grpcServer.Serve(lis); err != nil {
+		n.logger.Error("gRPC server failed", zap.Error(err))
+	}
 }
 
 func (n *MPCNode) Stop() {
@@ -107,7 +162,7 @@ func (n *MPCNode) connectToPeers() {
 			continue
 		}
 
-		client := protocol.NewMPCNodeServiceClient(conn)
+		client := gen.NewNodeServiceClient(conn)
 
 		n.peers[uint32(nodeID)] = &Peer{
 			NodeID:   uint32(nodeID),
@@ -137,7 +192,7 @@ func (n *MPCNode) startHeartbeat() {
 func (n *MPCNode) checkPeersHealth() {
 	for _, peer := range n.peers {
 		ctx, cancel := context.WithTimeout(n.ctx, 5*time.Second)
-		_, err := peer.client.Heartbeat(ctx, &protocol.HeartbeatRequest{
+		_, err := peer.client.Heartbeat(ctx, &gen.HeartbeatRequest{
 			NodeId:   n.config.NodeID,
 			Sequence: uint64(time.Now().Unix()),
 		})
@@ -172,13 +227,22 @@ func (n *MPCNode) RunDKG(ctx context.Context) error {
 
 	minSigners := uint32(n.config.Threshold)
 	maxSigners := uint32(n.config.TotalNodes)
+	sessionID := uuid.New().String()
 
-	// DKG Round 1: Each node generates round1 package
-	n.logger.Info("DKG Round 1: Collecting round1 packages")
+	participants := make([]uint32, 0, len(n.peers)+1)
+	participants = append(participants, n.config.NodeID)
+	for nodeID := range n.peers {
+		participants = append(participants, nodeID)
+	}
+
+	n.logger.Info("DKG participants", zap.Uint32s("participants", participants))
+
+	// ===== ROUND 1: Collect round1 packages from all participants =====
+	n.logger.Info("DKG Round 1: Collecting round1 packages", zap.String("session_id", sessionID))
 	round1Packages := make(map[uint32][]byte)
 
 	// Get our own round1 package
-	secretPkg1, round1Pkg, err := n.enclave.DKGPart1(ctx, minSigners, maxSigners)
+	ourSecretPkg1, round1Pkg, err := n.enclave.DKGPart1(ctx, sessionID, minSigners, maxSigners)
 	if err != nil {
 		return fmt.Errorf("DKG part1 failed: %w", err)
 	}
@@ -186,41 +250,93 @@ func (n *MPCNode) RunDKG(ctx context.Context) error {
 	n.logger.Info("Generated round1 package", zap.Uint32("node_id", n.config.NodeID))
 
 	// Collect round1 packages from all other participants
-	for nodeID := range n.config.PeerAddrs {
-		if uint32(nodeID) == n.config.NodeID {
-			continue
-		}
-		peer, ok := n.peers[uint32(nodeID)]
-		if !ok {
-			n.logger.Warn("Peer not found, skipping", zap.Uint32("peer_id", uint32(nodeID)))
-			continue
-		}
+	for nodeID := range n.peers {
+		peer := n.peers[nodeID]
+		n.logger.Info("Requesting round1 from peer", zap.Uint32("peer_id", nodeID))
 
-		// TODO: For now, we assume each node has an HTTP endpoint we can call
-		// In a full implementation, this would go through the peer's gRPC service
-		n.logger.Info("Requesting round1 from peer", zap.Uint32("peer_id", uint32(nodeID)))
-		_ = peer
+		// Send request to peer - peer will generate round1 and return it
+		resp, err := peer.SendDKGMessage(ctx, "dkg_round1", []byte(sessionID))
+		if err != nil {
+			n.logger.Warn("Failed to get round1 from peer", zap.Uint32("peer_id", nodeID), zap.Error(err))
+			continue
+		}
+		round1Packages[nodeID] = resp.Payload
 	}
 
-	// DKG Round 2: Each node processes round1 packages
-	n.logger.Info("DKG Round 2: Processing round1 packages")
-	secretPkg2, round2Packages, err := n.enclave.DKGPart2(ctx, secretPkg1, round1Packages)
+	if len(round1Packages) != len(participants) {
+		n.logger.Warn("Not all participants responded in round1",
+			zap.Int("received", len(round1Packages)),
+			zap.Int("expected", len(participants)))
+	}
+
+	n.logger.Info("Round 1 complete", zap.Int("num_packages", len(round1Packages)))
+
+	// ===== ROUND 2: Send round1 packages to all participants, collect round2 =====
+	n.logger.Info("DKG Round 2: Processing round1 packages", zap.String("session_id", sessionID))
+
+	// Encode round1 packages to send to peers (indexed by node ID)
+	round1PackagesJSON, err := json.Marshal(round1Packages)
+	if err != nil {
+		return fmt.Errorf("failed to encode round1 packages: %w", err)
+	}
+
+	// Our round2 - pass secret package from our round1
+	ourSecretPkg2, round2Packages, err := n.enclave.DKGPart2(ctx, sessionID, ourSecretPkg1, round1Packages)
 	if err != nil {
 		return fmt.Errorf("DKG part2 failed: %w", err)
 	}
-	n.logger.Info("Generated round2 packages", zap.Uint32("num_packages", uint32(len(round2Packages))))
 
-	// Collect round2 packages from all other participants
 	allRound2Packages := make(map[uint32][]byte)
-	allRound2Packages[n.config.NodeID] = round2Packages[n.config.NodeID]
+	// round2Packages is also indexed by node ID, get our entry
+	if pkg, ok := round2Packages[n.config.NodeID]; ok {
+		allRound2Packages[n.config.NodeID] = pkg
+	}
 
-	// DKG Round 3: Complete DKG
-	n.logger.Info("DKG Round 3: Completing DKG")
-	keyPackage, pubkeyPackage, err := n.enclave.DKGPart3(ctx, secretPkg2, round1Packages, allRound2Packages)
+	// Get round2 from peers
+	for nodeID := range n.peers {
+		peer := n.peers[nodeID]
+		n.logger.Info("Requesting round2 from peer", zap.Uint32("peer_id", nodeID))
+
+		resp, err := peer.SendDKGMessage(ctx, "dkg_round2", round1PackagesJSON)
+		if err != nil {
+			n.logger.Warn("Failed to get round2 from peer", zap.Uint32("peer_id", nodeID), zap.Error(err))
+			continue
+		}
+		allRound2Packages[nodeID] = resp.Payload
+	}
+
+	n.logger.Info("Round 2 complete", zap.Int("num_packages", len(allRound2Packages)))
+
+	// ===== ROUND 3: Complete DKG =====
+	n.logger.Info("DKG Round 3: Completing DKG", zap.String("session_id", sessionID))
+
+	// Encode both round1 and round2 packages for round3
+	roundCompleteJSON, err := json.Marshal(map[string]interface{}{
+		"round1": round1Packages,
+		"round2": allRound2Packages,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to encode round packages: %w", err)
+	}
+
+	// Our final DKG
+	keyPackage, pubkeyPackage, err := n.enclave.DKGPart3(ctx, sessionID, ourSecretPkg2, round1Packages, allRound2Packages)
 	if err != nil {
 		return fmt.Errorf("DKG part3 failed: %w", err)
 	}
-	_ = keyPackage // Suppress unused warning
+	_ = keyPackage
+
+	// Get final DKG results from peers
+	for nodeID := range n.peers {
+		peer := n.peers[nodeID]
+		n.logger.Info("Requesting round3 from peer", zap.Uint32("peer_id", nodeID))
+
+		_, err := peer.SendDKGMessage(ctx, "dkg_round3", roundCompleteJSON)
+		if err != nil {
+			n.logger.Warn("Failed to get round3 from peer", zap.Uint32("peer_id", nodeID), zap.Error(err))
+			continue
+		}
+	}
 
 	n.logger.Info("DKG completed successfully",
 		zap.Uint32("node_id", n.config.NodeID),
@@ -237,21 +353,99 @@ func (n *MPCNode) Sign(ctx context.Context, message []byte, signers []uint32) ([
 	n.setState(StateSigning)
 	defer n.setState(StateReady)
 
-	nonceCommit, _, err := n.enclave.SignRound1(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("sign round1 failed: %w", err)
+	sessionID := uuid.New().String()
+	n.logger.Info("Starting signing session",
+		zap.String("session_id", sessionID),
+		zap.Binary("message", message),
+		zap.Uint32s("signers", signers))
+
+	// Step 1: Start signing session on all participants
+	for _, nodeID := range signers {
+		if nodeID == n.config.NodeID {
+			if err := n.enclave.SignStart(ctx, sessionID, message, signers); err != nil {
+				return nil, fmt.Errorf("sign start failed for node %d: %w", nodeID, err)
+			}
+		} else {
+			peer, ok := n.peers[nodeID]
+			if !ok {
+				return nil, fmt.Errorf("peer %d not found", nodeID)
+			}
+			_, err := peer.SendSignMessage(ctx, "sign_start", []byte(sessionID))
+			if err != nil {
+				return nil, fmt.Errorf("sign start failed for peer %d: %w", nodeID, err)
+			}
+		}
+	}
+
+	// Step 2: Round 1 - Collect nonce commitments from all participants
+	commitments := make(map[uint32][]byte)
+	for _, nodeID := range signers {
+		if nodeID == n.config.NodeID {
+			_, commitment, err := n.enclave.SignRound1(ctx, sessionID)
+			if err != nil {
+				return nil, fmt.Errorf("sign round1 failed: %w", err)
+			}
+			commitments[nodeID] = commitment
+		} else {
+			peer, ok := n.peers[nodeID]
+			if !ok {
+				return nil, fmt.Errorf("peer %d not found", nodeID)
+			}
+			resp, err := peer.SendSignMessage(ctx, "round1", []byte(sessionID))
+			if err != nil {
+				return nil, fmt.Errorf("round1 failed for peer %d: %w", nodeID, err)
+			}
+			commitments[nodeID] = resp.Payload
+		}
 	}
 
 	n.logger.Info("Round 1 complete",
-		zap.Uint32("node_id", n.config.NodeID),
-		zap.Binary("nonce_commitment", nonceCommit))
+		zap.String("session_id", sessionID),
+		zap.Int("num_commitments", len(commitments)))
 
-	partialSig, _, err := n.enclave.SignRound2(ctx, message)
-	if err != nil {
-		return nil, fmt.Errorf("sign round2 failed: %w", err)
+	// Step 3: Round 2 - Get partial signatures from all participants
+	partialSignatures := make(map[uint32][]byte)
+	for _, nodeID := range signers {
+		if nodeID == n.config.NodeID {
+			partialSig, _, err := n.enclave.SignRound2(ctx, sessionID, nil)
+			if err != nil {
+				return nil, fmt.Errorf("sign round2 failed: %w", err)
+			}
+			partialSignatures[nodeID] = partialSig
+		} else {
+			peer, ok := n.peers[nodeID]
+			if !ok {
+				return nil, fmt.Errorf("peer %d not found", nodeID)
+			}
+			resp, err := peer.SendSignMessage(ctx, "round2", []byte(sessionID))
+			if err != nil {
+				return nil, fmt.Errorf("round2 failed for peer %d: %w", nodeID, err)
+			}
+			partialSignatures[nodeID] = resp.Payload
+		}
 	}
 
-	return partialSig, nil
+	// Need at least threshold signatures
+	threshold := uint32(n.config.Threshold)
+	if len(partialSignatures) < int(threshold) {
+		return nil, fmt.Errorf("not enough partial signatures: got %d, need %d", len(partialSignatures), threshold)
+	}
+
+	n.logger.Info("Round 2 complete",
+		zap.String("session_id", sessionID),
+		zap.Int("num_partial_sigs", len(partialSignatures)))
+
+	// Step 4: Aggregate partial signatures
+	signature, err := n.enclave.AggregateSignatures(ctx, message, partialSignatures)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate failed: %w", err)
+	}
+
+	n.logger.Info("Signing complete",
+		zap.String("session_id", sessionID),
+		zap.Binary("signature", signature))
+
+	return signature, nil
 }
 
 func (n *MPCNode) StartDKG(ctx context.Context, minSigners, maxSigners uint32) error {

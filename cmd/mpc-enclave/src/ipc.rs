@@ -4,7 +4,6 @@
 use crate::crypto::{self, DKGOutput, EpochState, KeyShare, PartialSignature, SignRound1Output};
 use axum::{
     extract::State,
-    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
@@ -18,6 +17,11 @@ use tower_http::cors::{Any, CorsLayer};
 #[allow(unused_imports)]
 use frost_ed25519 as frost;
 
+// Session timeout constants (in seconds)
+const SIGNING_SESSION_TIMEOUT_SECS: u64 = 60;   // 60 seconds max
+const DKG_SESSION_TIMEOUT_SECS: u64 = 600;       // 10 minutes max
+const REFRESH_SESSION_TIMEOUT_SECS: u64 = 300;    // 5 minutes max
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnclaveState {
     Uninitialized,
@@ -27,6 +31,33 @@ pub enum EnclaveState {
     Signing,
     Resharing,
     Error(String),
+}
+
+// Signing session state
+#[derive(Debug, Clone)]
+pub struct SigningSession {
+    pub session_id: String,
+    pub message_hash: Vec<u8>,
+    pub participants: Vec<u32>,
+    pub start_time: u64,
+    pub nonces: Option<Vec<u8>>,
+    pub commitments: HashMap<u32, Vec<u8>>,
+    pub round: u8,  // 1 or 2
+    pub completed: bool,
+}
+
+// DKG session state
+#[derive(Debug, Clone)]
+pub struct DKGSession {
+    pub session_id: String,
+    pub participants: Vec<u32>,
+    pub start_time: u64,
+    pub min_signers: u16,
+    pub max_signers: u16,
+    pub round: u8,  // 1, 2, or 3
+    pub secret_pkg1: Option<Vec<u8>>,
+    pub secret_pkg2: Option<Vec<u8>>,
+    pub completed: bool,
 }
 
 pub struct Enclave {
@@ -39,20 +70,19 @@ pub struct Enclave {
     dkg_output: RwLock<Option<DKGOutput>>,
     my_share: RwLock<Option<KeyShare>>,
     
-    // DKG state
-    dkg_secret_pkg1: RwLock<Option<Vec<u8>>>,
-    dkg_secret_pkg2: RwLock<Option<Vec<u8>>>,
-    
-    my_nonces: RwLock<Option<Vec<u8>>>,
-    current_epoch: RwLock<u32>,
-    epoch_state: RwLock<Option<EpochState>>,
-
-    signing_message: RwLock<Option<Vec<u8>>>,
-    signing_commitments: RwLock<HashMap<u32, Vec<u8>>>,
-    
     // Full key packages for signing
     key_package: RwLock<Option<Vec<u8>>>,
     pubkey_package: RwLock<Option<Vec<u8>>>,
+    
+    // Session state
+    current_epoch: RwLock<u32>,
+    epoch_state: RwLock<Option<EpochState>>,
+    
+    // Signing session
+    signing_session: RwLock<Option<SigningSession>>,
+    
+    // DKG session
+    dkg_session: RwLock<Option<DKGSession>>,
 }
 
 impl Enclave {
@@ -65,16 +95,36 @@ impl Enclave {
             state: RwLock::new(EnclaveState::Uninitialized),
             dkg_output: RwLock::new(None),
             my_share: RwLock::new(None),
-            dkg_secret_pkg1: RwLock::new(None),
-            dkg_secret_pkg2: RwLock::new(None),
-            my_nonces: RwLock::new(None),
-            current_epoch: RwLock::new(0),
-            epoch_state: RwLock::new(None),
-            signing_message: RwLock::new(None),
-            signing_commitments: RwLock::new(HashMap::new()),
             key_package: RwLock::new(None),
             pubkey_package: RwLock::new(None),
+            current_epoch: RwLock::new(0),
+            epoch_state: RwLock::new(None),
+            signing_session: RwLock::new(None),
+            dkg_session: RwLock::new(None),
         }
+    }
+
+    fn get_current_time(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    }
+
+    fn invalidate_signing_session(&self) {
+        let mut session = self.signing_session.write();
+        if session.is_some() {
+            tracing::info!("Invalidating signing session");
+        }
+        *session = None;
+    }
+
+    fn invalidate_dkg_session(&self) {
+        let mut session = self.dkg_session.write();
+        if session.is_some() {
+            tracing::info!("Invalidating DKG session");
+        }
+        *session = None;
     }
 
     pub fn initialize(&self, cluster_id: String) -> Result<(), String> {
@@ -139,9 +189,77 @@ impl Enclave {
         })
     }
 
-    pub fn dkg_part1(&self, min_signers: u16, max_signers: u16) -> Result<DKGPart1Result, String> {
-        if !matches!(*self.state.read(), EnclaveState::Ready) && !matches!(*self.state.read(), EnclaveState::Uninitialized) {
+    pub fn dkg_start_session(&self, session_id: String, min_signers: u16, max_signers: u16, participants: Vec<u32>) -> Result<DkgStartResult, String> {
+        // Invalidate any existing DKG session
+        self.invalidate_dkg_session();
+
+        if !matches!(*self.state.read(), EnclaveState::Ready) {
             return Err("Node not ready for DKG".to_string());
+        }
+
+        let now = self.get_current_time();
+
+        // Create new DKG session
+        let session = DKGSession {
+            session_id: session_id.clone(),
+            participants,
+            start_time: now,
+            min_signers,
+            max_signers,
+            round: 1,
+            secret_pkg1: None,
+            secret_pkg2: None,
+            completed: false,
+        };
+
+        *self.dkg_session.write() = Some(session);
+        *self.state.write() = EnclaveState::KeyGeneration;
+
+        tracing::info!("Started DKG session: {}", session_id);
+
+        Ok(DkgStartResult {
+            success: true,
+            round: 1,
+            round1_data: vec![],
+        })
+    }
+
+    pub fn dkg_part1(&self, session_id: &str, min_signers: u16, max_signers: u16) -> Result<DKGPart1Result, String> {
+        let now = self.get_current_time();
+        
+        // Check and update session
+        {
+            let mut session_guard = self.dkg_session.write();
+            match session_guard.as_mut() {
+                Some(session) if session.session_id == session_id => {
+                    // Check timeout
+                    if now.saturating_sub(session.start_time) > DKG_SESSION_TIMEOUT_SECS {
+                        tracing::warn!("DKG session {} timed out", session_id);
+                        *session_guard = None;
+                        return Err("DKG session timed out".to_string());
+                    }
+                    if session.round != 1 {
+                        return Err("Wrong round for DKG part1".to_string());
+                    }
+                }
+                Some(_) => {
+                    return Err("Different session already in progress".to_string());
+                }
+                None => {
+                    // No session, create new one
+                    *session_guard = Some(DKGSession {
+                        session_id: session_id.to_string(),
+                        participants: vec![],
+                        start_time: now,
+                        min_signers,
+                        max_signers,
+                        round: 1,
+                        secret_pkg1: None,
+                        secret_pkg2: None,
+                        completed: false,
+                    });
+                }
+            }
         }
 
         *self.state.write() = EnclaveState::KeyGeneration;
@@ -149,7 +267,13 @@ impl Enclave {
         let output = crypto::dkg_part1(self.node_id, max_signers, min_signers)
             .map_err(|e| e.to_string())?;
 
-        *self.dkg_secret_pkg1.write() = Some(output.secret_package.clone());
+        // Store secret package in session
+        {
+            let mut session_guard = self.dkg_session.write();
+            if let Some(session) = session_guard.as_mut() {
+                session.secret_pkg1 = Some(output.secret_package.clone());
+            }
+        }
 
         Ok(DKGPart1Result {
             success: true,
@@ -159,14 +283,42 @@ impl Enclave {
         })
     }
 
-    pub fn dkg_part2(&self, round1_packages: std::collections::BTreeMap<u32, Vec<u8>>) -> Result<DKGPart2Result, String> {
-        let secret_pkg = self.dkg_secret_pkg1.read();
-        let secret_bytes = secret_pkg.as_ref().ok_or("No secret package from round 1")?;
+    pub fn dkg_part2(&self, session_id: &str, round1_packages: BTreeMap<u32, Vec<u8>>) -> Result<DKGPart2Result, String> {
+        let now = self.get_current_time();
 
-        let output = crypto::dkg_part2(secret_bytes, &round1_packages)
+        // Verify session and check timeout
+        let secret_pkg1 = {
+            let mut session_guard = self.dkg_session.write();
+            match session_guard.as_ref() {
+                Some(session) if session.session_id == session_id => {
+                    if now.saturating_sub(session.start_time) > DKG_SESSION_TIMEOUT_SECS {
+                        tracing::warn!("DKG session {} timed out", session_id);
+                        *session_guard = None;
+                        return Err("DKG session timed out".to_string());
+                    }
+                    if session.round != 1 {
+                        return Err("Wrong round for DKG part2".to_string());
+                    }
+                    session.secret_pkg1.clone()
+                }
+                Some(_) => return Err("Different session in progress".to_string()),
+                None => return Err("No DKG session found".to_string()),
+            }
+        };
+
+        let secret_pkg1 = secret_pkg1.ok_or("No secret package from round 1")?;
+
+        let output = crypto::dkg_part2(&secret_pkg1, &round1_packages)
             .map_err(|e| e.to_string())?;
 
-        *self.dkg_secret_pkg2.write() = Some(output.secret_package.clone());
+        // Update session
+        {
+            let mut session_guard = self.dkg_session.write();
+            if let Some(session) = session_guard.as_mut() {
+                session.round = 2;
+                session.secret_pkg2 = Some(output.secret_package.clone());
+            }
+        }
 
         Ok(DKGPart2Result {
             success: true,
@@ -178,13 +330,35 @@ impl Enclave {
 
     pub fn dkg_part3(
         &self,
-        round1_packages: std::collections::BTreeMap<u32, Vec<u8>>,
-        round2_packages: std::collections::BTreeMap<u32, Vec<u8>>,
+        session_id: &str,
+        round1_packages: BTreeMap<u32, Vec<u8>>,
+        round2_packages: BTreeMap<u32, Vec<u8>>,
     ) -> Result<DKGPart3Result, String> {
-        let secret_pkg = self.dkg_secret_pkg2.read();
-        let secret_bytes = secret_pkg.as_ref().ok_or("No secret package from round 2")?;
+        let now = self.get_current_time();
 
-        let output = crypto::dkg_part3(secret_bytes, &round1_packages, &round2_packages)
+        // Verify session and check timeout
+        let secret_pkg2 = {
+            let mut session_guard = self.dkg_session.write();
+            match session_guard.as_ref() {
+                Some(session) if session.session_id == session_id => {
+                    if now.saturating_sub(session.start_time) > DKG_SESSION_TIMEOUT_SECS {
+                        tracing::warn!("DKG session {} timed out", session_id);
+                        *session_guard = None;
+                        return Err("DKG session timed out".to_string());
+                    }
+                    if session.round != 2 {
+                        return Err("Wrong round for DKG part3".to_string());
+                    }
+                    session.secret_pkg2.clone()
+                }
+                Some(_) => return Err("Different session in progress".to_string()),
+                None => return Err("No DKG session found".to_string()),
+            }
+        };
+
+        let secret_pkg2 = secret_pkg2.ok_or("No secret package from round 2")?;
+
+        let output = crypto::dkg_part3(&secret_pkg2, &round1_packages, &round2_packages)
             .map_err(|e| e.to_string())?;
 
         let key_package = serde_json::from_slice::<frost::keys::KeyPackage>(&output.key_package)
@@ -212,12 +386,37 @@ impl Enclave {
         *self.current_epoch.write() = 1;
         *self.state.write() = EnclaveState::Ready;
 
+        // Complete and invalidate session
+        {
+            let mut session_guard = self.dkg_session.write();
+            if let Some(session) = session_guard.as_mut() {
+                session.completed = true;
+                tracing::info!("DKG session {} completed successfully", session_id);
+            }
+            *session_guard = None;
+        }
+
         Ok(DKGPart3Result {
             success: true,
             error: String::new(),
             key_package: output.key_package,
             pubkey_package: output.pubkey_package,
         })
+    }
+
+    pub fn dkg_abort(&self, session_id: &str) -> Result<(), String> {
+        let session_guard = self.dkg_session.read();
+        match session_guard.as_ref() {
+            Some(session) if session.session_id == session_id => {
+                tracing::info!("Aborting DKG session: {}", session_id);
+                drop(session_guard);
+                self.invalidate_dkg_session();
+                *self.state.write() = EnclaveState::Ready;
+                Ok(())
+            }
+            Some(_) => Err("Different session in progress".to_string()),
+            None => Err("No DKG session found".to_string()),
+        }
     }
 
     pub fn get_public_key(&self) -> Result<Vec<u8>, String> {
@@ -236,52 +435,187 @@ impl Enclave {
         }
     }
 
-    pub fn sign_round1(&self) -> Result<SignRound1Result, String> {
+    pub fn get_pubkey_package(&self) -> Result<Vec<u8>, String> {
+        let pkg = self.pubkey_package.read();
+        match pkg.as_ref() {
+            Some(p) => Ok(p.clone()),
+            None => Err("Public key package not available".to_string()),
+        }
+    }
+
+    pub fn aggregate_signatures(&self, message: Vec<u8>, partial_signatures: BTreeMap<u32, Vec<u8>>) -> Result<Vec<u8>, String> {
+        let pubkey_pkg = self.pubkey_package.read();
+        let pubkey_package = pubkey_pkg.as_ref().ok_or("Public key package not available")?;
+
+        crypto::aggregate_signatures(&message, &partial_signatures, pubkey_package)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn sign_start_session(&self, session_id: String, message: Vec<u8>, participants: Vec<u32>) -> Result<(), String> {
+        // Invalidate any existing signing session
+        self.invalidate_signing_session();
+
+        if self.my_share.read().is_none() {
+            return Err("Key share not available".to_string());
+        }
+
+        let now = self.get_current_time();
+
+        // Create new signing session
+        let session = SigningSession {
+            session_id: session_id.clone(),
+            message_hash: crypto::hash_message(&message),
+            participants,
+            start_time: now,
+            nonces: None,
+            commitments: HashMap::new(),
+            round: 1,
+            completed: false,
+        };
+
+        *self.signing_session.write() = Some(session);
+        *self.state.write() = EnclaveState::Signing;
+
+        tracing::info!("Started signing session: {}", session_id);
+
+        Ok(())
+    }
+
+    pub fn sign_round1(&self, session_id: &str) -> Result<SignRound1Result, String> {
+        let now = self.get_current_time();
+
+        // Verify session and check timeout
+        {
+            let mut session_guard = self.signing_session.write();
+            match session_guard.as_mut() {
+                Some(session) if session.session_id == session_id => {
+                    if now.saturating_sub(session.start_time) > SIGNING_SESSION_TIMEOUT_SECS {
+                        tracing::warn!("Signing session {} timed out", session_id);
+                        *session_guard = None;
+                        *self.state.write() = EnclaveState::Ready;
+                        return Err("Signing session timed out".to_string());
+                    }
+                    if session.round != 1 {
+                        return Err("Wrong round for sign round1".to_string());
+                    }
+                }
+                Some(_) => return Err("Different signing session in progress".to_string()),
+                None => return Err("No signing session found".to_string()),
+            }
+        }
+
         let share = self.my_share.read();
         let key_package = share.as_ref().ok_or("Key share not available")?;
 
         let output = crypto::sign_round1(&key_package.key_package).map_err(|e| e.to_string())?;
 
-        *self.my_nonces.write() = Some(output.nonces.clone());
+        // Store nonces in session
+        {
+            let mut session_guard = self.signing_session.write();
+            if let Some(session) = session_guard.as_mut() {
+                session.nonces = Some(output.nonces.clone());
+            }
+        }
 
         Ok(SignRound1Result {
             success: true,
+            error: String::new(),
             nonce_commitment: output.nonces,
             commitment: output.commitment,
         })
     }
 
-    pub fn add_commitment(&self, from_node: u32, commitment: Vec<u8>) {
-        self.signing_commitments
-            .write()
-            .insert(from_node, commitment);
+    pub fn add_commitment(&self, session_id: &str, from_node: u32, commitment: Vec<u8>) -> Result<(), String> {
+        let mut session_guard = self.signing_session.write();
+        match session_guard.as_mut() {
+            Some(session) if session.session_id == session_id => {
+                session.commitments.insert(from_node, commitment);
+                Ok(())
+            }
+            Some(_) => Err("Different signing session in progress".to_string()),
+            None => Err("No signing session found".to_string()),
+        }
     }
 
-    pub fn sign_round2(&self, signing_package_bytes: Vec<u8>) -> Result<SignRound2Result, String> {
+    pub fn sign_round2(&self, session_id: &str, signing_package_bytes: Vec<u8>) -> Result<SignRound2Result, String> {
+        let now = self.get_current_time();
+
+        // Verify session and check timeout
+        let (nonces, message_hash) = {
+            let mut session_guard = self.signing_session.write();
+            match session_guard.as_mut() {
+                Some(session) if session.session_id == session_id => {
+                    if now.saturating_sub(session.start_time) > SIGNING_SESSION_TIMEOUT_SECS {
+                        tracing::warn!("Signing session {} timed out", session_id);
+                        *session_guard = None;
+                        *self.state.write() = EnclaveState::Ready;
+                        return Err("Signing session timed out".to_string());
+                    }
+                    if session.round != 1 {
+                        return Err("Wrong round for sign round2".to_string());
+                    }
+                    session.round = 2;
+                    (session.nonces.clone(), session.message_hash.clone())
+                }
+                Some(_) => return Err("Different signing session in progress".to_string()),
+                None => return Err("No signing session found".to_string()),
+            }
+        };
+
+        let nonces = nonces.ok_or("No nonces from round 1")?;
+
         let share = self.my_share.read();
         let key_package = share.as_ref().ok_or("Key share not available")?;
 
-        let nonces = self.my_nonces.read();
-        let nonces_bytes = nonces.as_ref().ok_or("Nonces not available")?;
-
-        let commitments = self.signing_commitments.read();
-        let all_commitments: std::collections::HashMap<u32, Vec<u8>> = commitments.clone();
+        let commitments = {
+            let session_guard = self.signing_session.read();
+            match session_guard.as_ref() {
+                Some(session) => session.commitments.clone(),
+                None => return Err("No signing session found".to_string()),
+            }
+        };
 
         let partial = crypto::sign_round2(
-            &signing_package_bytes,
-            nonces_bytes,
+            &message_hash,
+            &nonces,
             &key_package.key_package,
-            &all_commitments,
+            &commitments,
         )
         .map_err(|e| e.to_string())?;
 
         *self.state.write() = EnclaveState::Ready;
 
+        // Complete and invalidate session
+        {
+            let mut session_guard = self.signing_session.write();
+            if let Some(session) = session_guard.as_mut() {
+                session.completed = true;
+                tracing::info!("Signing session {} completed", session_id);
+            }
+            *session_guard = None;
+        }
+
         Ok(SignRound2Result {
             success: true,
+            error: String::new(),
             partial_signature: partial.signature_share,
             commitment: partial.commitment,
         })
+    }
+
+    pub fn sign_abort(&self, session_id: &str) -> Result<(), String> {
+        let session_guard = self.signing_session.read();
+        match session_guard.as_ref() {
+            Some(session) if session.session_id == session_id => {
+                tracing::info!("Aborting signing session: {}", session_id);
+                drop(session_guard);
+                self.invalidate_signing_session();
+                *self.state.write() = EnclaveState::Ready;
+                Ok(())
+            }
+            Some(_) => Err("Different signing session in progress".to_string()),
+            None => Err("No signing session found".to_string()),
+        }
     }
 }
 
@@ -324,6 +658,7 @@ struct DkgStartResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DKGPart1Request {
+    session_id: String,
     min_signers: u32,
     max_signers: u32,
 }
@@ -338,6 +673,7 @@ struct DKGPart1Result {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DKGPart2Request {
+    session_id: String,
     round1_packages: std::collections::BTreeMap<u32, Vec<u8>>,
 }
 
@@ -351,6 +687,7 @@ struct DKGPart2Result {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DKGPart3Request {
+    session_id: String,
     round1_packages: std::collections::BTreeMap<u32, Vec<u8>>,
     round2_packages: std::collections::BTreeMap<u32, Vec<u8>>,
 }
@@ -364,20 +701,41 @@ struct DKGPart3Result {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct SignRound1Request {
+    session_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SignStartRequest {
+    session_id: String,
+    message: Vec<u8>,
+    participants: Vec<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SignStartResult {
+    success: bool,
+    error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct SignRound1Result {
     success: bool,
+    error: String,
     nonce_commitment: Vec<u8>,
     commitment: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SignRound2Request {
+    session_id: String,
     signing_package: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SignRound2Result {
     success: bool,
+    error: String,
     partial_signature: Vec<u8>,
     commitment: Vec<u8>,
 }
@@ -385,6 +743,19 @@ struct SignRound2Result {
 #[derive(Debug, Serialize, Deserialize)]
 struct PublicKeyResponse {
     public_key: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AggregateRequest {
+    message: Vec<u8>,
+    partial_signatures: BTreeMap<u32, Vec<u8>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AggregateResponse {
+    success: bool,
+    error: String,
+    signature: Vec<u8>,
 }
 
 async fn initialize(
@@ -435,7 +806,7 @@ async fn dkg_part1(
     Json(req): Json<DKGPart1Request>,
 ) -> Json<DKGPart1Result> {
     let enclave = state.enclave.read();
-    match enclave.dkg_part1(req.min_signers as u16, req.max_signers as u16) {
+    match enclave.dkg_part1(&req.session_id, req.min_signers as u16, req.max_signers as u16) {
         Ok(result) => Json(DKGPart1Result {
             success: true,
             error: String::new(),
@@ -456,7 +827,7 @@ async fn dkg_part2(
     Json(req): Json<DKGPart2Request>,
 ) -> Json<DKGPart2Result> {
     let enclave = state.enclave.read();
-    match enclave.dkg_part2(req.round1_packages) {
+    match enclave.dkg_part2(&req.session_id, req.round1_packages) {
         Ok(result) => Json(DKGPart2Result {
             success: true,
             error: String::new(),
@@ -477,7 +848,7 @@ async fn dkg_part3(
     Json(req): Json<DKGPart3Request>,
 ) -> Json<DKGPart3Result> {
     let enclave = state.enclave.read();
-    match enclave.dkg_part3(req.round1_packages, req.round2_packages) {
+    match enclave.dkg_part3(&req.session_id, req.round1_packages, req.round2_packages) {
         Ok(result) => Json(DKGPart3Result {
             success: true,
             error: String::new(),
@@ -493,14 +864,40 @@ async fn dkg_part3(
     }
 }
 
-async fn sign_round1(State(state): State<AppState>) -> Json<SignRound1Result> {
+async fn sign_start(
+    State(state): State<AppState>,
+    Json(req): Json<SignStartRequest>,
+) -> Json<SignStartResult> {
     let enclave = state.enclave.read();
-    match enclave.sign_round1() {
-        Ok(result) => Json(result),
+    match enclave.sign_start_session(req.session_id, req.message, req.participants) {
+        Ok(()) => Json(SignStartResult {
+            success: true,
+            error: String::new(),
+        }),
+        Err(e) => Json(SignStartResult {
+            success: false,
+            error: e,
+        }),
+    }
+}
+
+async fn sign_round1(
+    State(state): State<AppState>,
+    Json(req): Json<SignRound1Request>,
+) -> Json<SignRound1Result> {
+    let enclave = state.enclave.read();
+    match enclave.sign_round1(&req.session_id) {
+        Ok(result) => Json(SignRound1Result {
+            success: true,
+            error: String::new(),
+            nonce_commitment: result.nonce_commitment,
+            commitment: result.commitment,
+        }),
         Err(e) => Json(SignRound1Result {
             success: false,
+            error: e,
             nonce_commitment: vec![],
-            commitment: e.as_bytes().to_vec(),
+            commitment: vec![],
         }),
     }
 }
@@ -510,12 +907,37 @@ async fn sign_round2(
     Json(req): Json<SignRound2Request>,
 ) -> Json<SignRound2Result> {
     let enclave = state.enclave.read();
-    match enclave.sign_round2(req.signing_package) {
-        Ok(result) => Json(result),
+    match enclave.sign_round2(&req.session_id, req.signing_package) {
+        Ok(result) => Json(SignRound2Result {
+            success: true,
+            error: String::new(),
+            partial_signature: result.partial_signature,
+            commitment: result.commitment,
+        }),
         Err(e) => Json(SignRound2Result {
             success: false,
+            error: e,
             partial_signature: vec![],
-            commitment: e.as_bytes().to_vec(),
+            commitment: vec![],
+        }),
+    }
+}
+
+async fn aggregate_signatures(
+    State(state): State<AppState>,
+    Json(req): Json<AggregateRequest>,
+) -> Json<AggregateResponse> {
+    let enclave = state.enclave.read();
+    match enclave.aggregate_signatures(req.message, req.partial_signatures) {
+        Ok(sig) => Json(AggregateResponse {
+            success: true,
+            error: String::new(),
+            signature: sig,
+        }),
+        Err(e) => Json(AggregateResponse {
+            success: false,
+            error: e,
+            signature: vec![],
         }),
     }
 }
@@ -545,8 +967,10 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .route("/dkg/part1", post(dkg_part1))
         .route("/dkg/part2", post(dkg_part2))
         .route("/dkg/part3", post(dkg_part3))
+        .route("/sign/start", post(sign_start))
         .route("/sign/round1", post(sign_round1))
         .route("/sign/round2", post(sign_round2))
+        .route("/aggregate", post(aggregate_signatures))
         .route("/public-key", get(get_public_key))
         .layer(cors)
         .with_state(state);
