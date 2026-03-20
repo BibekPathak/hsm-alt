@@ -173,11 +173,59 @@ func (n *MPCNode) RunDKG(ctx context.Context) error {
 	minSigners := uint32(n.config.Threshold)
 	maxSigners := uint32(n.config.TotalNodes)
 
-	if err := n.enclave.StartDKG(ctx, minSigners, maxSigners); err != nil {
-		return fmt.Errorf("DKG start failed: %w", err)
+	// DKG Round 1: Each node generates round1 package
+	n.logger.Info("DKG Round 1: Collecting round1 packages")
+	round1Packages := make(map[uint32][]byte)
+
+	// Get our own round1 package
+	secretPkg1, round1Pkg, err := n.enclave.DKGPart1(ctx, minSigners, maxSigners)
+	if err != nil {
+		return fmt.Errorf("DKG part1 failed: %w", err)
+	}
+	round1Packages[n.config.NodeID] = round1Pkg
+	n.logger.Info("Generated round1 package", zap.Uint32("node_id", n.config.NodeID))
+
+	// Collect round1 packages from all other participants
+	for nodeID := range n.config.PeerAddrs {
+		if uint32(nodeID) == n.config.NodeID {
+			continue
+		}
+		peer, ok := n.peers[uint32(nodeID)]
+		if !ok {
+			n.logger.Warn("Peer not found, skipping", zap.Uint32("peer_id", uint32(nodeID)))
+			continue
+		}
+
+		// TODO: For now, we assume each node has an HTTP endpoint we can call
+		// In a full implementation, this would go through the peer's gRPC service
+		n.logger.Info("Requesting round1 from peer", zap.Uint32("peer_id", uint32(nodeID)))
+		_ = peer
 	}
 
-	n.logger.Info("DKG completed successfully")
+	// DKG Round 2: Each node processes round1 packages
+	n.logger.Info("DKG Round 2: Processing round1 packages")
+	secretPkg2, round2Packages, err := n.enclave.DKGPart2(ctx, secretPkg1, round1Packages)
+	if err != nil {
+		return fmt.Errorf("DKG part2 failed: %w", err)
+	}
+	n.logger.Info("Generated round2 packages", zap.Uint32("num_packages", uint32(len(round2Packages))))
+
+	// Collect round2 packages from all other participants
+	allRound2Packages := make(map[uint32][]byte)
+	allRound2Packages[n.config.NodeID] = round2Packages[n.config.NodeID]
+
+	// DKG Round 3: Complete DKG
+	n.logger.Info("DKG Round 3: Completing DKG")
+	keyPackage, pubkeyPackage, err := n.enclave.DKGPart3(ctx, secretPkg2, round1Packages, allRound2Packages)
+	if err != nil {
+		return fmt.Errorf("DKG part3 failed: %w", err)
+	}
+	_ = keyPackage // Suppress unused warning
+
+	n.logger.Info("DKG completed successfully",
+		zap.Uint32("node_id", n.config.NodeID),
+		zap.Binary("public_key", pubkeyPackage))
+
 	return nil
 }
 

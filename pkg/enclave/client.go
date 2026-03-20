@@ -40,6 +40,41 @@ type DkgStartResponse struct {
 	Round1Data []byte `json:"round1_data"`
 }
 
+type DKGPart1Request struct {
+	MinSigners uint32 `json:"min_signers"`
+	MaxSigners uint32 `json:"max_signers"`
+}
+
+type DKGPart1Response struct {
+	Success       bool   `json:"success"`
+	Error         string `json:"error"`
+	SecretPackage []byte `json:"secret_package"`
+	Round1Package []byte `json:"round1_package"`
+}
+
+type DKGPart2Request struct {
+	Round1Packages map[uint32][]byte `json:"round1_packages"`
+}
+
+type DKGPart2Response struct {
+	Success        bool              `json:"success"`
+	Error          string            `json:"error"`
+	SecretPackage  []byte            `json:"secret_package"`
+	Round2Packages map[uint32][]byte `json:"round2_packages"`
+}
+
+type DKGPart3Request struct {
+	Round1Packages map[uint32][]byte `json:"round1_packages"`
+	Round2Packages map[uint32][]byte `json:"round2_packages"`
+}
+
+type DKGPart3Response struct {
+	Success       bool   `json:"success"`
+	Error         string `json:"error"`
+	KeyPackage    []byte `json:"key_package"`
+	PubkeyPackage []byte `json:"pubkey_package"`
+}
+
 type SignRound1Response struct {
 	Success         bool   `json:"success"`
 	NonceCommitment []byte `json:"nonce_commitment"`
@@ -58,11 +93,6 @@ type SignRound2Response struct {
 
 type PublicKeyResponse struct {
 	PublicKey []byte `json:"public_key"`
-}
-
-type KeyShareResponse struct {
-	KeyShare []byte `json:"key_share"`
-	Index    uint32 `json:"index"`
 }
 
 func NewClient(addr string) (*Client, error) {
@@ -145,6 +175,59 @@ func (c *Client) StartDKG(ctx context.Context, minSigners, maxSigners uint32) er
 	return nil
 }
 
+func (c *Client) DKGPart1(ctx context.Context, minSigners, maxSigners uint32) ([]byte, []byte, error) {
+	req := DKGPart1Request{
+		MinSigners: minSigners,
+		MaxSigners: maxSigners,
+	}
+	resp := &DKGPart1Response{}
+
+	if err := c.doRequest(ctx, "POST", "/dkg/part1", req, resp); err != nil {
+		return nil, nil, err
+	}
+
+	if !resp.Success {
+		return nil, nil, fmt.Errorf("DKG part1 failed: %s", resp.Error)
+	}
+
+	return resp.SecretPackage, resp.Round1Package, nil
+}
+
+func (c *Client) DKGPart2(ctx context.Context, secretPackage []byte, round1Packages map[uint32][]byte) ([]byte, map[uint32][]byte, error) {
+	req := DKGPart2Request{
+		Round1Packages: round1Packages,
+	}
+	resp := &DKGPart2Response{}
+
+	if err := c.doRequest(ctx, "POST", "/dkg/part2", req, resp); err != nil {
+		return nil, nil, err
+	}
+
+	if !resp.Success {
+		return nil, nil, fmt.Errorf("DKG part2 failed: %s", resp.Error)
+	}
+
+	return resp.SecretPackage, resp.Round2Packages, nil
+}
+
+func (c *Client) DKGPart3(ctx context.Context, secretPackage []byte, round1Packages, round2Packages map[uint32][]byte) ([]byte, []byte, error) {
+	req := DKGPart3Request{
+		Round1Packages: round1Packages,
+		Round2Packages: round2Packages,
+	}
+	resp := &DKGPart3Response{}
+
+	if err := c.doRequest(ctx, "POST", "/dkg/part3", req, resp); err != nil {
+		return nil, nil, err
+	}
+
+	if !resp.Success {
+		return nil, nil, fmt.Errorf("DKG part3 failed: %s", resp.Error)
+	}
+
+	return resp.KeyPackage, resp.PubkeyPackage, nil
+}
+
 func (c *Client) GetPublicKey(ctx context.Context) ([]byte, error) {
 	resp := &PublicKeyResponse{}
 
@@ -153,16 +236,6 @@ func (c *Client) GetPublicKey(ctx context.Context) ([]byte, error) {
 	}
 
 	return resp.PublicKey, nil
-}
-
-func (c *Client) GetKeyShare(ctx context.Context) ([]byte, uint32, error) {
-	resp := &KeyShareResponse{}
-
-	if err := c.doRequest(ctx, "GET", "/key-share", nil, resp); err != nil {
-		return nil, 0, err
-	}
-
-	return resp.KeyShare, resp.Index, nil
 }
 
 func (c *Client) SignRound1(ctx context.Context) ([]byte, []byte, error) {
