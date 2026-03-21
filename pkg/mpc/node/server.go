@@ -44,6 +44,9 @@ func (s *MPCNodeServiceServer) DKGMessage(ctx context.Context, req *gen.NodeMess
 	var err error
 
 	switch req.MessageType {
+	case "trigger_dkg":
+		err = s.handleTriggerDKG(ctx)
+		respPayload = []byte{}
 	case "dkg_round1":
 		respPayload, err = s.handleDKGRound1(ctx, req)
 	case "dkg_round2":
@@ -80,6 +83,16 @@ type dkgPhase1Data struct {
 type dkgPhaseComplete struct {
 	Round1 []byte            `json:"round1"`
 	Round2 map[uint32][]byte `json:"round2"`
+}
+
+func (s *MPCNodeServiceServer) handleTriggerDKG(ctx context.Context) error {
+	go func() {
+		err := s.node.RunDKG(context.Background())
+		if err != nil {
+			s.node.logger.Error("DKG failed", zap.Error(err))
+		}
+	}()
+	return nil
 }
 
 func (s *MPCNodeServiceServer) handleDKGRound1(ctx context.Context, req *gen.NodeMessage) ([]byte, error) {
@@ -199,6 +212,8 @@ func (s *MPCNodeServiceServer) SignMessage(ctx context.Context, req *gen.NodeMes
 	var err error
 
 	switch req.MessageType {
+	case "trigger_sign":
+		err, respPayload = s.handleTriggerSign(ctx, req)
 	case "sign_start":
 		err = s.handleSignStart(ctx, req)
 	case "round1":
@@ -225,6 +240,23 @@ func (s *MPCNodeServiceServer) SignMessage(ctx context.Context, req *gen.NodeMes
 		ToNode:      req.FromNode,
 		Payload:     respPayload,
 	}, nil
+}
+
+func (s *MPCNodeServiceServer) handleTriggerSign(ctx context.Context, req *gen.NodeMessage) (error, []byte) {
+	message := req.Payload
+	signers := []uint32{s.node.config.NodeID}
+	for id := range s.node.peers {
+		signers = append(signers, id)
+	}
+
+	go func() {
+		_, err := s.node.Sign(context.Background(), message, signers)
+		if err != nil {
+			s.node.logger.Error("Signing failed", zap.Error(err))
+		}
+	}()
+
+	return nil, []byte("signing started")
 }
 
 func (s *MPCNodeServiceServer) handleSignStart(ctx context.Context, req *gen.NodeMessage) error {

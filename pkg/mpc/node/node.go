@@ -223,17 +223,54 @@ func (n *MPCNode) GetStatus() (NodeState, uint32, []byte) {
 }
 
 func (n *MPCNode) RunDKG(ctx context.Context) error {
-	n.logger.Info("Starting DKG as coordinator")
+	threshold := uint32(n.config.Threshold)
 
-	minSigners := uint32(n.config.Threshold)
-	maxSigners := uint32(n.config.TotalNodes)
-	sessionID := uuid.New().String()
-
+	var lastErr error
 	participants := make([]uint32, 0, len(n.peers)+1)
 	participants = append(participants, n.config.NodeID)
 	for nodeID := range n.peers {
 		participants = append(participants, nodeID)
 	}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if len(participants) < int(threshold) {
+			return fmt.Errorf("not enough participants: have %d, need %d", len(participants), threshold)
+		}
+
+		n.logger.Info("DKG attempt",
+			zap.Int("attempt", attempt+1),
+			zap.Uint32s("participants", participants))
+
+		err := n.doRunDKG(ctx, participants)
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+		n.logger.Warn("DKG attempt failed, will retry",
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+
+		// Remove failed participants and retry
+		participants = n.excludeFailedParticipants(participants, err)
+	}
+
+	return fmt.Errorf("DKG failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (n *MPCNode) excludeFailedParticipants(participants []uint32, err error) []uint32 {
+	if len(participants) <= 1 {
+		return participants
+	}
+	return participants[:len(participants)-1]
+}
+
+func (n *MPCNode) doRunDKG(ctx context.Context, participants []uint32) error {
+	n.logger.Info("Starting DKG as coordinator")
+
+	minSigners := uint32(n.config.Threshold)
+	maxSigners := uint32(n.config.TotalNodes)
+	sessionID := uuid.New().String()
 
 	n.logger.Info("DKG participants", zap.Uint32s("participants", participants))
 
@@ -345,11 +382,55 @@ func (n *MPCNode) RunDKG(ctx context.Context) error {
 	return nil
 }
 
+const maxRetries = 3
+
 func (n *MPCNode) Sign(ctx context.Context, message []byte, signers []uint32) ([]byte, error) {
 	if n.getState() != StateReady {
 		return nil, fmt.Errorf("node not ready, state: %v", n.getState())
 	}
 
+	threshold := uint32(n.config.Threshold)
+
+	var lastErr error
+	currentSigners := make([]uint32, len(signers))
+	copy(currentSigners, signers)
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if len(currentSigners) < int(threshold) {
+			return nil, fmt.Errorf("not enough signers: have %d, need %d", len(currentSigners), threshold)
+		}
+
+		n.logger.Info("Signing attempt",
+			zap.Int("attempt", attempt+1),
+			zap.Uint32s("signers", currentSigners))
+
+		sig, err := n.doSign(ctx, message, currentSigners)
+		if err == nil {
+			return sig, nil
+		}
+
+		lastErr = err
+		n.logger.Warn("Signing attempt failed, will retry",
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+
+		// Remove failed signers and retry
+		currentSigners = n.excludeFailedSigners(currentSigners, err)
+	}
+
+	return nil, fmt.Errorf("signing failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (n *MPCNode) excludeFailedSigners(signers []uint32, err error) []uint32 {
+	// Simple heuristic: if error contains a peer ID, remove that peer
+	// For now, remove the last signer as a fallback
+	if len(signers) <= 1 {
+		return signers
+	}
+	return signers[:len(signers)-1]
+}
+
+func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) ([]byte, error) {
 	n.setState(StateSigning)
 	defer n.setState(StateReady)
 
