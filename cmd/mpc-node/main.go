@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/yourorg/hsm/pkg/config"
@@ -14,12 +17,14 @@ import (
 )
 
 var (
-	flagConfigPath = flag.String("config", "", "Path to configuration file")
-	flagNodeID     = flag.Uint("node-id", 0, "Node ID")
-	flagClusterID  = flag.String("cluster-id", "", "Cluster ID")
-	flagThreshold  = flag.Uint("threshold", 3, "Threshold (t)")
-	flagTotalNodes = flag.Uint("total-nodes", 5, "Total nodes (n)")
-	flagListenAddr = flag.String("listen", ":7001", "Listen address for node-to-node gRPC")
+	flagConfigPath  = flag.String("config", "", "Path to configuration file")
+	flagNodeID      = flag.Uint("node-id", 0, "Node ID")
+	flagClusterID   = flag.String("cluster-id", "", "Cluster ID")
+	flagThreshold   = flag.Uint("threshold", 2, "Threshold (t)")
+	flagTotalNodes  = flag.Uint("total-nodes", 2, "Total nodes (n)")
+	flagListenAddr  = flag.String("listen", ":7001", "Listen address for node-to-node gRPC")
+	flagEnclavePort = flag.Uint("enclave-port", 7002, "Enclave HTTP port")
+	flagPeers       = flag.String("peers", "", "Comma-separated list of peers (e.g., 2:localhost:7011)")
 )
 
 func main() {
@@ -31,13 +36,33 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Parse peers (format: "nodeID:host:port,nodeID:host:port")
+	// Example: "1:localhost:7001" or "2:127.0.0.1:7011"
+	peerAddrs := make(map[uint32]string)
+	if *flagPeers != "" {
+		for _, peer := range strings.Split(*flagPeers, ",") {
+			parts := strings.Split(peer, ":")
+			if len(parts) != 3 {
+				fmt.Fprintf(os.Stderr, "Invalid peer format: %s (expected nodeID:host:port)\n", peer)
+				os.Exit(1)
+			}
+			nodeID, err := strconv.ParseUint(parts[0], 10, 32)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid peer node ID: %s\n", parts[0])
+				os.Exit(1)
+			}
+			peerAddrs[uint32(nodeID)] = parts[1] + ":" + parts[2]
+		}
+	}
+
 	nodeConfig := &config.NodeConfig{
 		NodeID:      uint32(*flagNodeID),
 		ClusterID:   *flagClusterID,
 		Threshold:   uint32(*flagThreshold),
 		TotalNodes:  uint32(*flagTotalNodes),
 		ListenAddr:  *flagListenAddr,
-		EnclaveAddr: "localhost:7002",
+		EnclaveAddr: fmt.Sprintf("localhost:%d", *flagEnclavePort),
+		PeerAddrs:   peerAddrs,
 	}
 
 	logger.Info("Starting MPC Node",
