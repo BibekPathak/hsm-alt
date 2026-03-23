@@ -28,14 +28,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .unwrap_or(7002);
 
+    let data_dir: String = env::var("DATA_DIR")
+        .unwrap_or_else(|_| format!("/tmp/hsm-node-{}-data", node_id));
+
     tracing::info!(
-        "Starting MPC Enclave - Node ID: {}, Threshold: {}/{}",
+        "Starting MPC Enclave - Node ID: {}, Threshold: {}/{}, Data: {}",
         node_id,
         threshold,
-        total_shares
+        total_shares,
+        data_dir
     );
 
     let enclave = Arc::new(RwLock::new(Enclave::new(node_id, threshold, total_shares)));
+    enclave.read().set_data_dir(data_dir);
 
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async move {

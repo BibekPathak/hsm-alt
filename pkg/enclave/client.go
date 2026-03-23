@@ -348,6 +348,26 @@ func (c *Client) AggregateSignatures(ctx context.Context, message []byte, partia
 	return resp.Signature, nil
 }
 
+func (c *Client) VerifySignature(ctx context.Context, signature, message []byte) (bool, error) {
+	type VerifyRequest struct {
+		Signature []byte `json:"signature"`
+		Message   []byte `json:"message"`
+	}
+	type VerifyResponse struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+
+	req := VerifyRequest{Signature: signature, Message: message}
+	resp := &VerifyResponse{}
+
+	if err := c.doRequest(ctx, "POST", "/verify", req, resp); err != nil {
+		return false, err
+	}
+
+	return resp.Valid, nil
+}
+
 func (c *Client) Sign(ctx context.Context, message []byte, signers []uint32) ([]byte, error) {
 	return nil, nil
 }

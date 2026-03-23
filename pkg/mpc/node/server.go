@@ -47,6 +47,9 @@ func (s *MPCNodeServiceServer) DKGMessage(ctx context.Context, req *gen.NodeMess
 	case "trigger_dkg":
 		err = s.handleTriggerDKG(ctx)
 		respPayload = []byte{}
+	case "trigger_reshare":
+		err = s.handleTriggerReshare(ctx)
+		respPayload = []byte{}
 	case "dkg_round1":
 		respPayload, err = s.handleDKGRound1(ctx, req)
 	case "dkg_round2":
@@ -90,6 +93,18 @@ func (s *MPCNodeServiceServer) handleTriggerDKG(ctx context.Context) error {
 		err := s.node.RunDKG(context.Background())
 		if err != nil {
 			s.node.logger.Error("DKG failed", zap.Error(err))
+		}
+	}()
+	return nil
+}
+
+func (s *MPCNodeServiceServer) handleTriggerReshare(ctx context.Context) error {
+	go func() {
+		err := s.node.Reshare(context.Background())
+		if err != nil {
+			s.node.logger.Error("Reshare failed", zap.Error(err))
+		} else {
+			s.node.logger.Info("Reshare completed successfully")
 		}
 	}()
 	return nil
@@ -249,14 +264,13 @@ func (s *MPCNodeServiceServer) handleTriggerSign(ctx context.Context, req *gen.N
 		signers = append(signers, id)
 	}
 
-	go func() {
-		_, err := s.node.Sign(context.Background(), message, signers)
-		if err != nil {
-			s.node.logger.Error("Signing failed", zap.Error(err))
-		}
-	}()
+	// Run signing synchronously to get the signature
+	sig, err := s.node.Sign(context.Background(), message, signers)
+	if err != nil {
+		return err, []byte{}
+	}
 
-	return nil, []byte("signing started")
+	return nil, sig
 }
 
 func (s *MPCNodeServiceServer) handleSignStart(ctx context.Context, req *gen.NodeMessage) error {

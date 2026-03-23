@@ -550,6 +550,19 @@ func (n *MPCNode) EvolveKey(ctx context.Context) error {
 	return err
 }
 
+func (n *MPCNode) Reshare(ctx context.Context) error {
+	if n.getState() != StateReady {
+		return fmt.Errorf("node not ready, state: %v", n.getState())
+	}
+
+	n.logger.Info("Starting key resharing")
+
+	// Resharing in FROST is essentially running DKG again to generate new shares
+	// For true share refresh (same public key, new shares), a more complex protocol is needed
+	// Here we implement it as DKG re-run which gives new key share to each participant
+	return n.doRunDKG(ctx, nil)
+}
+
 func (n *MPCNode) setState(state NodeState) {
 	n.mu.Lock()
 	defer n.mu.Unlock()

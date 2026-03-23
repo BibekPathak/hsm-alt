@@ -65,6 +65,7 @@ pub struct Enclave {
     cluster_id: RwLock<Option<String>>,
     threshold: u32,
     total_shares: u32,
+    data_dir: RwLock<Option<String>>,
     state: RwLock<EnclaveState>,
 
     dkg_output: RwLock<Option<DKGOutput>>,
@@ -92,6 +93,7 @@ impl Enclave {
             cluster_id: RwLock::new(None),
             threshold,
             total_shares,
+            data_dir: RwLock::new(None),
             state: RwLock::new(EnclaveState::Uninitialized),
             dkg_output: RwLock::new(None),
             my_share: RwLock::new(None),
@@ -109,6 +111,84 @@ impl Enclave {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
+    }
+
+    pub fn set_data_dir(&self, dir: String) {
+        *self.data_dir.write() = Some(dir);
+    }
+
+    fn get_state_path(&self, filename: &str) -> Option<std::path::PathBuf> {
+        self.data_dir.read().as_ref().map(|d| std::path::Path::new(d).join(filename))
+    }
+
+    pub fn save_state(&self) -> Result<(), String> {
+        let dir_str = {
+            let guard = self.data_dir.read();
+            guard.as_ref().map(|d| d.to_string()).ok_or("Data directory not set")?
+        };
+        
+        std::fs::create_dir_all(&dir_str).map_err(|e| format!("Failed to create data dir: {}", e))?;
+
+        if let Some(my_share) = self.my_share.read().as_ref() {
+            let path = std::path::Path::new(&dir_str).join("key_share.json");
+            let json = serde_json::to_vec(my_share).map_err(|e| e.to_string())?;
+            std::fs::write(&path, json).map_err(|e| format!("Failed to write key share: {}", e))?;
+            tracing::info!("Saved key share to {:?}", path);
+        }
+
+        if let Some(pubkey_pkg) = self.pubkey_package.read().as_ref() {
+            let path = std::path::Path::new(&dir_str).join("pubkey_package.json");
+            std::fs::write(&path, pubkey_pkg).map_err(|e| format!("Failed to write pubkey package: {}", e))?;
+            tracing::info!("Saved pubkey package to {:?}", path);
+        }
+
+        if let Some(dkg_out) = self.dkg_output.read().as_ref() {
+            let path = std::path::Path::new(&dir_str).join("dkg_output.json");
+            let json = serde_json::to_vec(dkg_out).map_err(|e| e.to_string())?;
+            std::fs::write(&path, json).map_err(|e| format!("Failed to write DKG output: {}", e))?;
+            tracing::info!("Saved DKG output to {:?}", path);
+        }
+
+        Ok(())
+    }
+
+    pub fn load_state(&self) -> Result<bool, String> {
+        let dir_str = {
+            let guard = self.data_dir.read();
+            match guard.as_ref() {
+                Some(d) => d.to_string(),
+                None => return Ok(false),
+            }
+        };
+
+        let key_share_path = std::path::Path::new(&dir_str).join("key_share.json");
+        if key_share_path.exists() {
+            let data = std::fs::read(&key_share_path).map_err(|e| format!("Failed to read key share: {}", e))?;
+            let share: KeyShare = serde_json::from_slice(&data).map_err(|e| format!("Failed to parse key share: {}", e))?;
+            *self.my_share.write() = Some(share);
+            tracing::info!("Loaded key share from {:?}", key_share_path);
+        }
+
+        let pubkey_path = std::path::Path::new(&dir_str).join("pubkey_package.json");
+        if pubkey_path.exists() {
+            let data = std::fs::read(&pubkey_path).map_err(|e| format!("Failed to read pubkey package: {}", e))?;
+            *self.pubkey_package.write() = Some(data);
+            tracing::info!("Loaded pubkey package from {:?}", pubkey_path);
+        }
+
+        let dkg_path = std::path::Path::new(&dir_str).join("dkg_output.json");
+        if dkg_path.exists() {
+            let data = std::fs::read(&dkg_path).map_err(|e| format!("Failed to read DKG output: {}", e))?;
+            let output: DKGOutput = serde_json::from_slice(&data).map_err(|e| format!("Failed to parse DKG output: {}", e))?;
+            *self.dkg_output.write() = Some(output);
+            tracing::info!("Loaded DKG output from {:?}", dkg_path);
+        }
+
+        if self.my_share.read().is_some() {
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     fn invalidate_signing_session(&self) {
@@ -129,7 +209,23 @@ impl Enclave {
 
     pub fn initialize(&self, cluster_id: String) -> Result<(), String> {
         *self.cluster_id.write() = Some(cluster_id);
-        *self.state.write() = EnclaveState::Ready;
+        
+        // Try to load existing state from disk
+        match self.load_state() {
+            Ok(true) => {
+                tracing::info!("Loaded existing key state from disk");
+                *self.state.write() = EnclaveState::Ready;
+            }
+            Ok(false) => {
+                tracing::info!("No existing state found, starting fresh");
+                *self.state.write() = EnclaveState::Ready;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load state: {}", e);
+                *self.state.write() = EnclaveState::Ready;
+            }
+        }
+        
         Ok(())
     }
 
@@ -386,6 +482,11 @@ impl Enclave {
         *self.current_epoch.write() = 1;
         *self.state.write() = EnclaveState::Ready;
 
+        // Save state to disk
+        if let Err(e) = self.save_state() {
+            tracing::warn!("Failed to save state: {}", e);
+        }
+
         // Complete and invalidate session
         {
             let mut session_guard = self.dkg_session.write();
@@ -448,6 +549,14 @@ impl Enclave {
         let pubkey_package = pubkey_pkg.as_ref().ok_or("Public key package not available")?;
 
         crypto::aggregate_signatures(&message, &partial_signatures, pubkey_package)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn verify_signature(&self, signature: Vec<u8>, message: Vec<u8>) -> Result<bool, String> {
+        let pubkey_pkg = self.pubkey_package.read();
+        let pubkey_package = pubkey_pkg.as_ref().ok_or("Public key package not available")?;
+
+        crypto::verify_signature(&signature, &message, pubkey_package)
             .map_err(|e| e.to_string())
     }
 
@@ -758,6 +867,18 @@ struct AggregateResponse {
     signature: Vec<u8>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct VerifyRequest {
+    signature: Vec<u8>,
+    message: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VerifyResponse {
+    valid: bool,
+    error: String,
+}
+
 async fn initialize(
     State(state): State<AppState>,
     Json(req): Json<InitRequest>,
@@ -942,6 +1063,14 @@ async fn aggregate_signatures(
     }
 }
 
+async fn verify_signature(State(state): State<AppState>, Json(req): Json<VerifyRequest>) -> Json<VerifyResponse> {
+    let enclave = state.enclave.read();
+    match enclave.verify_signature(req.signature, req.message) {
+        Ok(valid) => Json(VerifyResponse { valid, error: String::new() }),
+        Err(e) => Json(VerifyResponse { valid: false, error: e }),
+    }
+}
+
 async fn get_public_key(State(state): State<AppState>) -> Json<PublicKeyResponse> {
     let enclave = state.enclave.read();
     match enclave.get_public_key() {
@@ -971,6 +1100,7 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .route("/sign/round1", post(sign_round1))
         .route("/sign/round2", post(sign_round2))
         .route("/aggregate", post(aggregate_signatures))
+        .route("/verify", post(verify_signature))
         .route("/public-key", get(get_public_key))
         .layer(cors)
         .with_state(state);
