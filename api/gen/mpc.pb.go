@@ -1825,6 +1825,238 @@ func (x *HeartbeatResponse) GetHealthy() bool {
 	return false
 }
 
+type TriggerSignRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Message       []byte                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	Signers       []uint32               `protobuf:"varint,2,rep,packed,name=signers,proto3" json:"signers,omitempty"`
+	SessionId     string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TriggerSignRequest) Reset() {
+	*x = TriggerSignRequest{}
+	mi := &file_mpc_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TriggerSignRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TriggerSignRequest) ProtoMessage() {}
+
+func (x *TriggerSignRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mpc_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TriggerSignRequest.ProtoReflect.Descriptor instead.
+func (*TriggerSignRequest) Descriptor() ([]byte, []int) {
+	return file_mpc_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *TriggerSignRequest) GetMessage() []byte {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+func (x *TriggerSignRequest) GetSigners() []uint32 {
+	if x != nil {
+		return x.Signers
+	}
+	return nil
+}
+
+func (x *TriggerSignRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type TriggerSignResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TriggerSignResponse) Reset() {
+	*x = TriggerSignResponse{}
+	mi := &file_mpc_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TriggerSignResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TriggerSignResponse) ProtoMessage() {}
+
+func (x *TriggerSignResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_mpc_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TriggerSignResponse.ProtoReflect.Descriptor instead.
+func (*TriggerSignResponse) Descriptor() ([]byte, []int) {
+	return file_mpc_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *TriggerSignResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *TriggerSignResponse) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *TriggerSignResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type AggregateRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Message           []byte                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	PartialSignatures map[uint32][]byte      `protobuf:"bytes,2,rep,name=partial_signatures,json=partialSignatures,proto3" json:"partial_signatures,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AggregateRequest) Reset() {
+	*x = AggregateRequest{}
+	mi := &file_mpc_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AggregateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AggregateRequest) ProtoMessage() {}
+
+func (x *AggregateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mpc_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AggregateRequest.ProtoReflect.Descriptor instead.
+func (*AggregateRequest) Descriptor() ([]byte, []int) {
+	return file_mpc_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *AggregateRequest) GetMessage() []byte {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+func (x *AggregateRequest) GetPartialSignatures() map[uint32][]byte {
+	if x != nil {
+		return x.PartialSignatures
+	}
+	return nil
+}
+
+type AggregateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AggregateResponse) Reset() {
+	*x = AggregateResponse{}
+	mi := &file_mpc_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AggregateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AggregateResponse) ProtoMessage() {}
+
+func (x *AggregateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_mpc_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AggregateResponse.ProtoReflect.Descriptor instead.
+func (*AggregateResponse) Descriptor() ([]byte, []int) {
+	return file_mpc_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *AggregateResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *AggregateResponse) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *AggregateResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type CreateClusterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
@@ -1836,7 +2068,7 @@ type CreateClusterRequest struct {
 
 func (x *CreateClusterRequest) Reset() {
 	*x = CreateClusterRequest{}
-	mi := &file_mpc_proto_msgTypes[33]
+	mi := &file_mpc_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1848,7 +2080,7 @@ func (x *CreateClusterRequest) String() string {
 func (*CreateClusterRequest) ProtoMessage() {}
 
 func (x *CreateClusterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[33]
+	mi := &file_mpc_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1861,7 +2093,7 @@ func (x *CreateClusterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterRequest.ProtoReflect.Descriptor instead.
 func (*CreateClusterRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{33}
+	return file_mpc_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CreateClusterRequest) GetClusterId() string {
@@ -1896,7 +2128,7 @@ type CreateClusterResponse struct {
 
 func (x *CreateClusterResponse) Reset() {
 	*x = CreateClusterResponse{}
-	mi := &file_mpc_proto_msgTypes[34]
+	mi := &file_mpc_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1908,7 +2140,7 @@ func (x *CreateClusterResponse) String() string {
 func (*CreateClusterResponse) ProtoMessage() {}
 
 func (x *CreateClusterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[34]
+	mi := &file_mpc_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1921,7 +2153,7 @@ func (x *CreateClusterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterResponse.ProtoReflect.Descriptor instead.
 func (*CreateClusterResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{34}
+	return file_mpc_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CreateClusterResponse) GetSuccess() bool {
@@ -1956,7 +2188,7 @@ type AddNodeRequest struct {
 
 func (x *AddNodeRequest) Reset() {
 	*x = AddNodeRequest{}
-	mi := &file_mpc_proto_msgTypes[35]
+	mi := &file_mpc_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1968,7 +2200,7 @@ func (x *AddNodeRequest) String() string {
 func (*AddNodeRequest) ProtoMessage() {}
 
 func (x *AddNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[35]
+	mi := &file_mpc_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1981,7 +2213,7 @@ func (x *AddNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddNodeRequest.ProtoReflect.Descriptor instead.
 func (*AddNodeRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{35}
+	return file_mpc_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AddNodeRequest) GetClusterId() string {
@@ -2015,7 +2247,7 @@ type AddNodeResponse struct {
 
 func (x *AddNodeResponse) Reset() {
 	*x = AddNodeResponse{}
-	mi := &file_mpc_proto_msgTypes[36]
+	mi := &file_mpc_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2027,7 +2259,7 @@ func (x *AddNodeResponse) String() string {
 func (*AddNodeResponse) ProtoMessage() {}
 
 func (x *AddNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[36]
+	mi := &file_mpc_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2040,7 +2272,7 @@ func (x *AddNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddNodeResponse.ProtoReflect.Descriptor instead.
 func (*AddNodeResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{36}
+	return file_mpc_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AddNodeResponse) GetSuccess() bool {
@@ -2067,7 +2299,7 @@ type RemoveNodeRequest struct {
 
 func (x *RemoveNodeRequest) Reset() {
 	*x = RemoveNodeRequest{}
-	mi := &file_mpc_proto_msgTypes[37]
+	mi := &file_mpc_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2079,7 +2311,7 @@ func (x *RemoveNodeRequest) String() string {
 func (*RemoveNodeRequest) ProtoMessage() {}
 
 func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[37]
+	mi := &file_mpc_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2092,7 +2324,7 @@ func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeRequest.ProtoReflect.Descriptor instead.
 func (*RemoveNodeRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{37}
+	return file_mpc_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RemoveNodeRequest) GetClusterId() string {
@@ -2119,7 +2351,7 @@ type RemoveNodeResponse struct {
 
 func (x *RemoveNodeResponse) Reset() {
 	*x = RemoveNodeResponse{}
-	mi := &file_mpc_proto_msgTypes[38]
+	mi := &file_mpc_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2131,7 +2363,7 @@ func (x *RemoveNodeResponse) String() string {
 func (*RemoveNodeResponse) ProtoMessage() {}
 
 func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[38]
+	mi := &file_mpc_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2144,7 +2376,7 @@ func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeResponse.ProtoReflect.Descriptor instead.
 func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{38}
+	return file_mpc_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *RemoveNodeResponse) GetSuccess() bool {
@@ -2171,7 +2403,7 @@ type TriggerResharingRequest struct {
 
 func (x *TriggerResharingRequest) Reset() {
 	*x = TriggerResharingRequest{}
-	mi := &file_mpc_proto_msgTypes[39]
+	mi := &file_mpc_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2183,7 +2415,7 @@ func (x *TriggerResharingRequest) String() string {
 func (*TriggerResharingRequest) ProtoMessage() {}
 
 func (x *TriggerResharingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[39]
+	mi := &file_mpc_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2196,7 +2428,7 @@ func (x *TriggerResharingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerResharingRequest.ProtoReflect.Descriptor instead.
 func (*TriggerResharingRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{39}
+	return file_mpc_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *TriggerResharingRequest) GetClusterId() string {
@@ -2223,7 +2455,7 @@ type TriggerResharingResponse struct {
 
 func (x *TriggerResharingResponse) Reset() {
 	*x = TriggerResharingResponse{}
-	mi := &file_mpc_proto_msgTypes[40]
+	mi := &file_mpc_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2235,7 +2467,7 @@ func (x *TriggerResharingResponse) String() string {
 func (*TriggerResharingResponse) ProtoMessage() {}
 
 func (x *TriggerResharingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[40]
+	mi := &file_mpc_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2248,7 +2480,7 @@ func (x *TriggerResharingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerResharingResponse.ProtoReflect.Descriptor instead.
 func (*TriggerResharingResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{40}
+	return file_mpc_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *TriggerResharingResponse) GetSuccess() bool {
@@ -2274,7 +2506,7 @@ type ClusterStateRequest struct {
 
 func (x *ClusterStateRequest) Reset() {
 	*x = ClusterStateRequest{}
-	mi := &file_mpc_proto_msgTypes[41]
+	mi := &file_mpc_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2286,7 +2518,7 @@ func (x *ClusterStateRequest) String() string {
 func (*ClusterStateRequest) ProtoMessage() {}
 
 func (x *ClusterStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[41]
+	mi := &file_mpc_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2299,7 +2531,7 @@ func (x *ClusterStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterStateRequest.ProtoReflect.Descriptor instead.
 func (*ClusterStateRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{41}
+	return file_mpc_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ClusterStateRequest) GetClusterId() string {
@@ -2322,7 +2554,7 @@ type ClusterStateResponse struct {
 
 func (x *ClusterStateResponse) Reset() {
 	*x = ClusterStateResponse{}
-	mi := &file_mpc_proto_msgTypes[42]
+	mi := &file_mpc_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2334,7 +2566,7 @@ func (x *ClusterStateResponse) String() string {
 func (*ClusterStateResponse) ProtoMessage() {}
 
 func (x *ClusterStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[42]
+	mi := &file_mpc_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2347,7 +2579,7 @@ func (x *ClusterStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterStateResponse.ProtoReflect.Descriptor instead.
 func (*ClusterStateResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{42}
+	return file_mpc_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ClusterStateResponse) GetClusterId() string {
@@ -2397,7 +2629,7 @@ type NodeState struct {
 
 func (x *NodeState) Reset() {
 	*x = NodeState{}
-	mi := &file_mpc_proto_msgTypes[43]
+	mi := &file_mpc_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2409,7 +2641,7 @@ func (x *NodeState) String() string {
 func (*NodeState) ProtoMessage() {}
 
 func (x *NodeState) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[43]
+	mi := &file_mpc_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2422,7 +2654,7 @@ func (x *NodeState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeState.ProtoReflect.Descriptor instead.
 func (*NodeState) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{43}
+	return file_mpc_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *NodeState) GetNodeId() uint32 {
@@ -2463,7 +2695,7 @@ type PolicyRequest struct {
 
 func (x *PolicyRequest) Reset() {
 	*x = PolicyRequest{}
-	mi := &file_mpc_proto_msgTypes[44]
+	mi := &file_mpc_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2475,7 +2707,7 @@ func (x *PolicyRequest) String() string {
 func (*PolicyRequest) ProtoMessage() {}
 
 func (x *PolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[44]
+	mi := &file_mpc_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2488,7 +2720,7 @@ func (x *PolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRequest.ProtoReflect.Descriptor instead.
 func (*PolicyRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{44}
+	return file_mpc_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *PolicyRequest) GetClusterId() string {
@@ -2515,7 +2747,7 @@ type PolicyResponse struct {
 
 func (x *PolicyResponse) Reset() {
 	*x = PolicyResponse{}
-	mi := &file_mpc_proto_msgTypes[45]
+	mi := &file_mpc_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2527,7 +2759,7 @@ func (x *PolicyResponse) String() string {
 func (*PolicyResponse) ProtoMessage() {}
 
 func (x *PolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[45]
+	mi := &file_mpc_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2540,7 +2772,7 @@ func (x *PolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyResponse.ProtoReflect.Descriptor instead.
 func (*PolicyResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{45}
+	return file_mpc_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *PolicyResponse) GetSuccess() bool {
@@ -2567,7 +2799,7 @@ type Policy struct {
 
 func (x *Policy) Reset() {
 	*x = Policy{}
-	mi := &file_mpc_proto_msgTypes[46]
+	mi := &file_mpc_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2579,7 +2811,7 @@ func (x *Policy) String() string {
 func (*Policy) ProtoMessage() {}
 
 func (x *Policy) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[46]
+	mi := &file_mpc_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2592,7 +2824,7 @@ func (x *Policy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Policy.ProtoReflect.Descriptor instead.
 func (*Policy) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{46}
+	return file_mpc_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *Policy) GetRules() []*PolicyRule {
@@ -2621,7 +2853,7 @@ type PolicyRule struct {
 
 func (x *PolicyRule) Reset() {
 	*x = PolicyRule{}
-	mi := &file_mpc_proto_msgTypes[47]
+	mi := &file_mpc_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2633,7 +2865,7 @@ func (x *PolicyRule) String() string {
 func (*PolicyRule) ProtoMessage() {}
 
 func (x *PolicyRule) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[47]
+	mi := &file_mpc_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2646,7 +2878,7 @@ func (x *PolicyRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRule.ProtoReflect.Descriptor instead.
 func (*PolicyRule) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{47}
+	return file_mpc_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *PolicyRule) GetName() string {
@@ -2687,7 +2919,7 @@ type RateLimitConfig struct {
 
 func (x *RateLimitConfig) Reset() {
 	*x = RateLimitConfig{}
-	mi := &file_mpc_proto_msgTypes[48]
+	mi := &file_mpc_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2699,7 +2931,7 @@ func (x *RateLimitConfig) String() string {
 func (*RateLimitConfig) ProtoMessage() {}
 
 func (x *RateLimitConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[48]
+	mi := &file_mpc_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2712,7 +2944,7 @@ func (x *RateLimitConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RateLimitConfig.ProtoReflect.Descriptor instead.
 func (*RateLimitConfig) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{48}
+	return file_mpc_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *RateLimitConfig) GetMaxRequestsPerMinute() int64 {
@@ -2861,7 +3093,27 @@ const file_mpc_proto_rawDesc = "" +
 	"\x11HeartbeatResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\rR\x06nodeId\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x18\n" +
-	"\ahealthy\x18\x03 \x01(\bR\ahealthy\"t\n" +
+	"\ahealthy\x18\x03 \x01(\bR\ahealthy\"g\n" +
+	"\x12TriggerSignRequest\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\fR\amessage\x12\x18\n" +
+	"\asigners\x18\x02 \x03(\rR\asigners\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\"f\n" +
+	"\x13TriggerSignResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xcf\x01\n" +
+	"\x10AggregateRequest\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\fR\amessage\x12[\n" +
+	"\x12partial_signatures\x18\x02 \x03(\v2,.mpc.AggregateRequest.PartialSignaturesEntryR\x11partialSignatures\x1aD\n" +
+	"\x16PartialSignaturesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"a\n" +
+	"\x11AggregateResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1c\n" +
+	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"t\n" +
 	"\x14CreateClusterRequest\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x1c\n" +
@@ -2949,12 +3201,14 @@ const file_mpc_proto_rawDesc = "" +
 	"\vGetKeyShare\x12\x14.mpc.KeyShareRequest\x1a\x15.mpc.KeyShareResponse\x122\n" +
 	"\tEvolveKey\x12\x11.mpc.EpochRequest\x1a\x12.mpc.EpochResponse\x124\n" +
 	"\aReshare\x12\x13.mpc.ReshareRequest\x1a\x14.mpc.ReshareResponse\x121\n" +
-	"\x06Attest\x12\x12.mpc.AttestRequest\x1a\x13.mpc.AttestResponse2\xea\x01\n" +
+	"\x06Attest\x12\x12.mpc.AttestRequest\x1a\x13.mpc.AttestResponse2\xf2\x02\n" +
 	"\vNodeService\x12:\n" +
 	"\tHandshake\x12\x15.mpc.HandshakeRequest\x1a\x16.mpc.HandshakeResponse\x120\n" +
 	"\n" +
 	"DKGMessage\x12\x10.mpc.NodeMessage\x1a\x10.mpc.NodeMessage\x121\n" +
-	"\vSignMessage\x12\x10.mpc.NodeMessage\x1a\x10.mpc.NodeMessage\x12:\n" +
+	"\vSignMessage\x12\x10.mpc.NodeMessage\x1a\x10.mpc.NodeMessage\x12@\n" +
+	"\vTriggerSign\x12\x17.mpc.TriggerSignRequest\x1a\x18.mpc.TriggerSignResponse\x12D\n" +
+	"\x13AggregateSignatures\x12\x15.mpc.AggregateRequest\x1a\x16.mpc.AggregateResponse\x12:\n" +
 	"\tHeartbeat\x12\x15.mpc.HeartbeatRequest\x1a\x16.mpc.HeartbeatResponse2\xa3\x03\n" +
 	"\x0fOperatorService\x12F\n" +
 	"\rCreateCluster\x12\x19.mpc.CreateClusterRequest\x1a\x1a.mpc.CreateClusterResponse\x124\n" +
@@ -2977,7 +3231,7 @@ func file_mpc_proto_rawDescGZIP() []byte {
 	return file_mpc_proto_rawDescData
 }
 
-var file_mpc_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
+var file_mpc_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_mpc_proto_goTypes = []any{
 	(*InitRequest)(nil),              // 0: mpc.InitRequest
 	(*InitResponse)(nil),             // 1: mpc.InitResponse
@@ -3012,83 +3266,93 @@ var file_mpc_proto_goTypes = []any{
 	(*NodeMessage)(nil),              // 30: mpc.NodeMessage
 	(*HeartbeatRequest)(nil),         // 31: mpc.HeartbeatRequest
 	(*HeartbeatResponse)(nil),        // 32: mpc.HeartbeatResponse
-	(*CreateClusterRequest)(nil),     // 33: mpc.CreateClusterRequest
-	(*CreateClusterResponse)(nil),    // 34: mpc.CreateClusterResponse
-	(*AddNodeRequest)(nil),           // 35: mpc.AddNodeRequest
-	(*AddNodeResponse)(nil),          // 36: mpc.AddNodeResponse
-	(*RemoveNodeRequest)(nil),        // 37: mpc.RemoveNodeRequest
-	(*RemoveNodeResponse)(nil),       // 38: mpc.RemoveNodeResponse
-	(*TriggerResharingRequest)(nil),  // 39: mpc.TriggerResharingRequest
-	(*TriggerResharingResponse)(nil), // 40: mpc.TriggerResharingResponse
-	(*ClusterStateRequest)(nil),      // 41: mpc.ClusterStateRequest
-	(*ClusterStateResponse)(nil),     // 42: mpc.ClusterStateResponse
-	(*NodeState)(nil),                // 43: mpc.NodeState
-	(*PolicyRequest)(nil),            // 44: mpc.PolicyRequest
-	(*PolicyResponse)(nil),           // 45: mpc.PolicyResponse
-	(*Policy)(nil),                   // 46: mpc.Policy
-	(*PolicyRule)(nil),               // 47: mpc.PolicyRule
-	(*RateLimitConfig)(nil),          // 48: mpc.RateLimitConfig
-	nil,                              // 49: mpc.DKGRound2Request.ParticipantSharesEntry
+	(*TriggerSignRequest)(nil),       // 33: mpc.TriggerSignRequest
+	(*TriggerSignResponse)(nil),      // 34: mpc.TriggerSignResponse
+	(*AggregateRequest)(nil),         // 35: mpc.AggregateRequest
+	(*AggregateResponse)(nil),        // 36: mpc.AggregateResponse
+	(*CreateClusterRequest)(nil),     // 37: mpc.CreateClusterRequest
+	(*CreateClusterResponse)(nil),    // 38: mpc.CreateClusterResponse
+	(*AddNodeRequest)(nil),           // 39: mpc.AddNodeRequest
+	(*AddNodeResponse)(nil),          // 40: mpc.AddNodeResponse
+	(*RemoveNodeRequest)(nil),        // 41: mpc.RemoveNodeRequest
+	(*RemoveNodeResponse)(nil),       // 42: mpc.RemoveNodeResponse
+	(*TriggerResharingRequest)(nil),  // 43: mpc.TriggerResharingRequest
+	(*TriggerResharingResponse)(nil), // 44: mpc.TriggerResharingResponse
+	(*ClusterStateRequest)(nil),      // 45: mpc.ClusterStateRequest
+	(*ClusterStateResponse)(nil),     // 46: mpc.ClusterStateResponse
+	(*NodeState)(nil),                // 47: mpc.NodeState
+	(*PolicyRequest)(nil),            // 48: mpc.PolicyRequest
+	(*PolicyResponse)(nil),           // 49: mpc.PolicyResponse
+	(*Policy)(nil),                   // 50: mpc.Policy
+	(*PolicyRule)(nil),               // 51: mpc.PolicyRule
+	(*RateLimitConfig)(nil),          // 52: mpc.RateLimitConfig
+	nil,                              // 53: mpc.DKGRound2Request.ParticipantSharesEntry
+	nil,                              // 54: mpc.AggregateRequest.PartialSignaturesEntry
 }
 var file_mpc_proto_depIdxs = []int32{
-	49, // 0: mpc.DKGRound2Request.participant_shares:type_name -> mpc.DKGRound2Request.ParticipantSharesEntry
-	43, // 1: mpc.ClusterStateResponse.nodes:type_name -> mpc.NodeState
-	46, // 2: mpc.PolicyRequest.policy:type_name -> mpc.Policy
-	47, // 3: mpc.Policy.rules:type_name -> mpc.PolicyRule
-	48, // 4: mpc.Policy.rate_limits:type_name -> mpc.RateLimitConfig
-	0,  // 5: mpc.EnclaveService.Initialize:input_type -> mpc.InitRequest
-	2,  // 6: mpc.EnclaveService.GetStatus:input_type -> mpc.StatusRequest
-	4,  // 7: mpc.EnclaveService.DKGStart:input_type -> mpc.DKGStartRequest
-	6,  // 8: mpc.EnclaveService.DKGRound1:input_type -> mpc.DKGRound1Request
-	8,  // 9: mpc.EnclaveService.DKGRound2:input_type -> mpc.DKGRound2Request
-	10, // 10: mpc.EnclaveService.DKGComplete:input_type -> mpc.DKGCompleteRequest
-	12, // 11: mpc.EnclaveService.SignStart:input_type -> mpc.SignStartRequest
-	14, // 12: mpc.EnclaveService.SignRound1:input_type -> mpc.SignRound1Request
-	16, // 13: mpc.EnclaveService.SignRound2:input_type -> mpc.SignRound2Request
-	18, // 14: mpc.EnclaveService.GetPublicKey:input_type -> mpc.PublicKeyRequest
-	20, // 15: mpc.EnclaveService.GetKeyShare:input_type -> mpc.KeyShareRequest
-	22, // 16: mpc.EnclaveService.EvolveKey:input_type -> mpc.EpochRequest
-	24, // 17: mpc.EnclaveService.Reshare:input_type -> mpc.ReshareRequest
-	26, // 18: mpc.EnclaveService.Attest:input_type -> mpc.AttestRequest
-	28, // 19: mpc.NodeService.Handshake:input_type -> mpc.HandshakeRequest
-	30, // 20: mpc.NodeService.DKGMessage:input_type -> mpc.NodeMessage
-	30, // 21: mpc.NodeService.SignMessage:input_type -> mpc.NodeMessage
-	31, // 22: mpc.NodeService.Heartbeat:input_type -> mpc.HeartbeatRequest
-	33, // 23: mpc.OperatorService.CreateCluster:input_type -> mpc.CreateClusterRequest
-	35, // 24: mpc.OperatorService.AddNode:input_type -> mpc.AddNodeRequest
-	37, // 25: mpc.OperatorService.RemoveNode:input_type -> mpc.RemoveNodeRequest
-	39, // 26: mpc.OperatorService.TriggerResharing:input_type -> mpc.TriggerResharingRequest
-	41, // 27: mpc.OperatorService.GetClusterState:input_type -> mpc.ClusterStateRequest
-	44, // 28: mpc.OperatorService.ConfigurePolicy:input_type -> mpc.PolicyRequest
-	1,  // 29: mpc.EnclaveService.Initialize:output_type -> mpc.InitResponse
-	3,  // 30: mpc.EnclaveService.GetStatus:output_type -> mpc.StatusResponse
-	5,  // 31: mpc.EnclaveService.DKGStart:output_type -> mpc.DKGStartResponse
-	7,  // 32: mpc.EnclaveService.DKGRound1:output_type -> mpc.DKGRound1Response
-	9,  // 33: mpc.EnclaveService.DKGRound2:output_type -> mpc.DKGRound2Response
-	11, // 34: mpc.EnclaveService.DKGComplete:output_type -> mpc.DKGCompleteResponse
-	13, // 35: mpc.EnclaveService.SignStart:output_type -> mpc.SignStartResponse
-	15, // 36: mpc.EnclaveService.SignRound1:output_type -> mpc.SignRound1Response
-	17, // 37: mpc.EnclaveService.SignRound2:output_type -> mpc.SignRound2Response
-	19, // 38: mpc.EnclaveService.GetPublicKey:output_type -> mpc.PublicKeyResponse
-	21, // 39: mpc.EnclaveService.GetKeyShare:output_type -> mpc.KeyShareResponse
-	23, // 40: mpc.EnclaveService.EvolveKey:output_type -> mpc.EpochResponse
-	25, // 41: mpc.EnclaveService.Reshare:output_type -> mpc.ReshareResponse
-	27, // 42: mpc.EnclaveService.Attest:output_type -> mpc.AttestResponse
-	29, // 43: mpc.NodeService.Handshake:output_type -> mpc.HandshakeResponse
-	30, // 44: mpc.NodeService.DKGMessage:output_type -> mpc.NodeMessage
-	30, // 45: mpc.NodeService.SignMessage:output_type -> mpc.NodeMessage
-	32, // 46: mpc.NodeService.Heartbeat:output_type -> mpc.HeartbeatResponse
-	34, // 47: mpc.OperatorService.CreateCluster:output_type -> mpc.CreateClusterResponse
-	36, // 48: mpc.OperatorService.AddNode:output_type -> mpc.AddNodeResponse
-	38, // 49: mpc.OperatorService.RemoveNode:output_type -> mpc.RemoveNodeResponse
-	40, // 50: mpc.OperatorService.TriggerResharing:output_type -> mpc.TriggerResharingResponse
-	42, // 51: mpc.OperatorService.GetClusterState:output_type -> mpc.ClusterStateResponse
-	45, // 52: mpc.OperatorService.ConfigurePolicy:output_type -> mpc.PolicyResponse
-	29, // [29:53] is the sub-list for method output_type
-	5,  // [5:29] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	53, // 0: mpc.DKGRound2Request.participant_shares:type_name -> mpc.DKGRound2Request.ParticipantSharesEntry
+	54, // 1: mpc.AggregateRequest.partial_signatures:type_name -> mpc.AggregateRequest.PartialSignaturesEntry
+	47, // 2: mpc.ClusterStateResponse.nodes:type_name -> mpc.NodeState
+	50, // 3: mpc.PolicyRequest.policy:type_name -> mpc.Policy
+	51, // 4: mpc.Policy.rules:type_name -> mpc.PolicyRule
+	52, // 5: mpc.Policy.rate_limits:type_name -> mpc.RateLimitConfig
+	0,  // 6: mpc.EnclaveService.Initialize:input_type -> mpc.InitRequest
+	2,  // 7: mpc.EnclaveService.GetStatus:input_type -> mpc.StatusRequest
+	4,  // 8: mpc.EnclaveService.DKGStart:input_type -> mpc.DKGStartRequest
+	6,  // 9: mpc.EnclaveService.DKGRound1:input_type -> mpc.DKGRound1Request
+	8,  // 10: mpc.EnclaveService.DKGRound2:input_type -> mpc.DKGRound2Request
+	10, // 11: mpc.EnclaveService.DKGComplete:input_type -> mpc.DKGCompleteRequest
+	12, // 12: mpc.EnclaveService.SignStart:input_type -> mpc.SignStartRequest
+	14, // 13: mpc.EnclaveService.SignRound1:input_type -> mpc.SignRound1Request
+	16, // 14: mpc.EnclaveService.SignRound2:input_type -> mpc.SignRound2Request
+	18, // 15: mpc.EnclaveService.GetPublicKey:input_type -> mpc.PublicKeyRequest
+	20, // 16: mpc.EnclaveService.GetKeyShare:input_type -> mpc.KeyShareRequest
+	22, // 17: mpc.EnclaveService.EvolveKey:input_type -> mpc.EpochRequest
+	24, // 18: mpc.EnclaveService.Reshare:input_type -> mpc.ReshareRequest
+	26, // 19: mpc.EnclaveService.Attest:input_type -> mpc.AttestRequest
+	28, // 20: mpc.NodeService.Handshake:input_type -> mpc.HandshakeRequest
+	30, // 21: mpc.NodeService.DKGMessage:input_type -> mpc.NodeMessage
+	30, // 22: mpc.NodeService.SignMessage:input_type -> mpc.NodeMessage
+	33, // 23: mpc.NodeService.TriggerSign:input_type -> mpc.TriggerSignRequest
+	35, // 24: mpc.NodeService.AggregateSignatures:input_type -> mpc.AggregateRequest
+	31, // 25: mpc.NodeService.Heartbeat:input_type -> mpc.HeartbeatRequest
+	37, // 26: mpc.OperatorService.CreateCluster:input_type -> mpc.CreateClusterRequest
+	39, // 27: mpc.OperatorService.AddNode:input_type -> mpc.AddNodeRequest
+	41, // 28: mpc.OperatorService.RemoveNode:input_type -> mpc.RemoveNodeRequest
+	43, // 29: mpc.OperatorService.TriggerResharing:input_type -> mpc.TriggerResharingRequest
+	45, // 30: mpc.OperatorService.GetClusterState:input_type -> mpc.ClusterStateRequest
+	48, // 31: mpc.OperatorService.ConfigurePolicy:input_type -> mpc.PolicyRequest
+	1,  // 32: mpc.EnclaveService.Initialize:output_type -> mpc.InitResponse
+	3,  // 33: mpc.EnclaveService.GetStatus:output_type -> mpc.StatusResponse
+	5,  // 34: mpc.EnclaveService.DKGStart:output_type -> mpc.DKGStartResponse
+	7,  // 35: mpc.EnclaveService.DKGRound1:output_type -> mpc.DKGRound1Response
+	9,  // 36: mpc.EnclaveService.DKGRound2:output_type -> mpc.DKGRound2Response
+	11, // 37: mpc.EnclaveService.DKGComplete:output_type -> mpc.DKGCompleteResponse
+	13, // 38: mpc.EnclaveService.SignStart:output_type -> mpc.SignStartResponse
+	15, // 39: mpc.EnclaveService.SignRound1:output_type -> mpc.SignRound1Response
+	17, // 40: mpc.EnclaveService.SignRound2:output_type -> mpc.SignRound2Response
+	19, // 41: mpc.EnclaveService.GetPublicKey:output_type -> mpc.PublicKeyResponse
+	21, // 42: mpc.EnclaveService.GetKeyShare:output_type -> mpc.KeyShareResponse
+	23, // 43: mpc.EnclaveService.EvolveKey:output_type -> mpc.EpochResponse
+	25, // 44: mpc.EnclaveService.Reshare:output_type -> mpc.ReshareResponse
+	27, // 45: mpc.EnclaveService.Attest:output_type -> mpc.AttestResponse
+	29, // 46: mpc.NodeService.Handshake:output_type -> mpc.HandshakeResponse
+	30, // 47: mpc.NodeService.DKGMessage:output_type -> mpc.NodeMessage
+	30, // 48: mpc.NodeService.SignMessage:output_type -> mpc.NodeMessage
+	34, // 49: mpc.NodeService.TriggerSign:output_type -> mpc.TriggerSignResponse
+	36, // 50: mpc.NodeService.AggregateSignatures:output_type -> mpc.AggregateResponse
+	32, // 51: mpc.NodeService.Heartbeat:output_type -> mpc.HeartbeatResponse
+	38, // 52: mpc.OperatorService.CreateCluster:output_type -> mpc.CreateClusterResponse
+	40, // 53: mpc.OperatorService.AddNode:output_type -> mpc.AddNodeResponse
+	42, // 54: mpc.OperatorService.RemoveNode:output_type -> mpc.RemoveNodeResponse
+	44, // 55: mpc.OperatorService.TriggerResharing:output_type -> mpc.TriggerResharingResponse
+	46, // 56: mpc.OperatorService.GetClusterState:output_type -> mpc.ClusterStateResponse
+	49, // 57: mpc.OperatorService.ConfigurePolicy:output_type -> mpc.PolicyResponse
+	32, // [32:58] is the sub-list for method output_type
+	6,  // [6:32] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_mpc_proto_init() }
@@ -3102,7 +3366,7 @@ func file_mpc_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mpc_proto_rawDesc), len(file_mpc_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   50,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

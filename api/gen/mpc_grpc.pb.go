@@ -623,10 +623,12 @@ var EnclaveService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NodeService_Handshake_FullMethodName   = "/mpc.NodeService/Handshake"
-	NodeService_DKGMessage_FullMethodName  = "/mpc.NodeService/DKGMessage"
-	NodeService_SignMessage_FullMethodName = "/mpc.NodeService/SignMessage"
-	NodeService_Heartbeat_FullMethodName   = "/mpc.NodeService/Heartbeat"
+	NodeService_Handshake_FullMethodName           = "/mpc.NodeService/Handshake"
+	NodeService_DKGMessage_FullMethodName          = "/mpc.NodeService/DKGMessage"
+	NodeService_SignMessage_FullMethodName         = "/mpc.NodeService/SignMessage"
+	NodeService_TriggerSign_FullMethodName         = "/mpc.NodeService/TriggerSign"
+	NodeService_AggregateSignatures_FullMethodName = "/mpc.NodeService/AggregateSignatures"
+	NodeService_Heartbeat_FullMethodName           = "/mpc.NodeService/Heartbeat"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -636,6 +638,8 @@ type NodeServiceClient interface {
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	DKGMessage(ctx context.Context, in *NodeMessage, opts ...grpc.CallOption) (*NodeMessage, error)
 	SignMessage(ctx context.Context, in *NodeMessage, opts ...grpc.CallOption) (*NodeMessage, error)
+	TriggerSign(ctx context.Context, in *TriggerSignRequest, opts ...grpc.CallOption) (*TriggerSignResponse, error)
+	AggregateSignatures(ctx context.Context, in *AggregateRequest, opts ...grpc.CallOption) (*AggregateResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 }
 
@@ -677,6 +681,26 @@ func (c *nodeServiceClient) SignMessage(ctx context.Context, in *NodeMessage, op
 	return out, nil
 }
 
+func (c *nodeServiceClient) TriggerSign(ctx context.Context, in *TriggerSignRequest, opts ...grpc.CallOption) (*TriggerSignResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TriggerSignResponse)
+	err := c.cc.Invoke(ctx, NodeService_TriggerSign_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) AggregateSignatures(ctx context.Context, in *AggregateRequest, opts ...grpc.CallOption) (*AggregateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AggregateResponse)
+	err := c.cc.Invoke(ctx, NodeService_AggregateSignatures_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartbeatResponse)
@@ -694,6 +718,8 @@ type NodeServiceServer interface {
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	DKGMessage(context.Context, *NodeMessage) (*NodeMessage, error)
 	SignMessage(context.Context, *NodeMessage) (*NodeMessage, error)
+	TriggerSign(context.Context, *TriggerSignRequest) (*TriggerSignResponse, error)
+	AggregateSignatures(context.Context, *AggregateRequest) (*AggregateResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
@@ -713,6 +739,12 @@ func (UnimplementedNodeServiceServer) DKGMessage(context.Context, *NodeMessage) 
 }
 func (UnimplementedNodeServiceServer) SignMessage(context.Context, *NodeMessage) (*NodeMessage, error) {
 	return nil, status.Error(codes.Unimplemented, "method SignMessage not implemented")
+}
+func (UnimplementedNodeServiceServer) TriggerSign(context.Context, *TriggerSignRequest) (*TriggerSignResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TriggerSign not implemented")
+}
+func (UnimplementedNodeServiceServer) AggregateSignatures(context.Context, *AggregateRequest) (*AggregateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AggregateSignatures not implemented")
 }
 func (UnimplementedNodeServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
@@ -792,6 +824,42 @@ func _NodeService_SignMessage_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_TriggerSign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TriggerSignRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).TriggerSign(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_TriggerSign_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).TriggerSign(ctx, req.(*TriggerSignRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_AggregateSignatures_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AggregateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).AggregateSignatures(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_AggregateSignatures_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).AggregateSignatures(ctx, req.(*AggregateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartbeatRequest)
 	if err := dec(in); err != nil {
@@ -828,6 +896,14 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SignMessage",
 			Handler:    _NodeService_SignMessage_Handler,
+		},
+		{
+			MethodName: "TriggerSign",
+			Handler:    _NodeService_TriggerSign_Handler,
+		},
+		{
+			MethodName: "AggregateSignatures",
+			Handler:    _NodeService_AggregateSignatures_Handler,
 		},
 		{
 			MethodName: "Heartbeat",

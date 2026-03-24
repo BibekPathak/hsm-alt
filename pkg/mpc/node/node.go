@@ -84,6 +84,41 @@ func (p *Peer) SendDKGMessage(ctx context.Context, msgType string, payload []byt
 	})
 }
 
+func (p *Peer) TriggerSign(ctx context.Context, message []byte, signers []uint32, sessionID string) (string, error) {
+	if p.client == nil {
+		return "", fmt.Errorf("no client connection")
+	}
+	resp, err := p.client.TriggerSign(ctx, &gen.TriggerSignRequest{
+		Message:   message,
+		Signers:   signers,
+		SessionId: sessionID,
+	})
+	if err != nil {
+		return "", err
+	}
+	if !resp.Accepted {
+		return "", fmt.Errorf("sign start rejected: %s", resp.Error)
+	}
+	return resp.SessionId, nil
+}
+
+func (p *Peer) Aggregate(ctx context.Context, message []byte, partialSigs map[uint32][]byte) ([]byte, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("no client connection")
+	}
+	resp, err := p.client.AggregateSignatures(ctx, &gen.AggregateRequest{
+		Message:           message,
+		PartialSignatures: partialSigs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("aggregation failed: %s", resp.Error)
+	}
+	return resp.Signature, nil
+}
+
 func NewNode(cfg *config.NodeConfig, logger *zap.Logger) (*MPCNode, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 

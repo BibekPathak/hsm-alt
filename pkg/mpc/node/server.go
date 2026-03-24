@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/yourorg/hsm/api/gen"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -361,6 +362,78 @@ func (s *MPCNodeServiceServer) Heartbeat(ctx context.Context, req *gen.Heartbeat
 		NodeId:   s.node.config.NodeID,
 		Sequence: req.Sequence,
 		Healthy:  true,
+	}, nil
+}
+
+func (s *MPCNodeServiceServer) TriggerSign(ctx context.Context, req *gen.TriggerSignRequest) (*gen.TriggerSignResponse, error) {
+	s.node.logger.Info("Received TriggerSign request",
+		zap.Binary("message", req.Message),
+		zap.Uint32s("signers", req.Signers),
+		zap.String("session_id", req.SessionId))
+
+	if s.node.enclave == nil {
+		return &gen.TriggerSignResponse{
+			Accepted:  false,
+			SessionId: req.SessionId,
+			Error:     "enclave not initialized",
+		}, nil
+	}
+
+	sessionID := req.SessionId
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+
+	err := s.node.enclave.SignStart(ctx, sessionID, req.Message, req.Signers)
+	if err != nil {
+		s.node.logger.Error("SignStart failed", zap.Error(err))
+		return &gen.TriggerSignResponse{
+			Accepted:  false,
+			SessionId: sessionID,
+			Error:     err.Error(),
+		}, nil
+	}
+
+	s.node.logger.Info("Sign session started on node",
+		zap.String("session_id", sessionID))
+
+	return &gen.TriggerSignResponse{
+		Accepted:  true,
+		SessionId: sessionID,
+		Error:     "",
+	}, nil
+}
+
+func (s *MPCNodeServiceServer) AggregateSignatures(ctx context.Context, req *gen.AggregateRequest) (*gen.AggregateResponse, error) {
+	s.node.logger.Info("Received AggregateSignatures request",
+		zap.Binary("message", req.Message),
+		zap.Int("num_partials", len(req.PartialSignatures)))
+
+	if s.node.enclave == nil {
+		return &gen.AggregateResponse{
+			Success:   false,
+			Signature: nil,
+			Error:     "enclave not initialized",
+		}, nil
+	}
+
+	sig, err := s.node.enclave.AggregateSignatures(ctx, req.Message, req.PartialSignatures)
+	if err != nil {
+		s.node.logger.Error("Aggregate failed", zap.Error(err))
+		return &gen.AggregateResponse{
+			Success:   false,
+			Signature: nil,
+			Error:     err.Error(),
+		}, nil
+	}
+
+	s.node.logger.Info("Aggregation successful",
+		zap.Binary("signature", sig))
+
+	return &gen.AggregateResponse{
+		Success:   true,
+		Signature: sig,
+		Error:     "",
 	}, nil
 }
 
