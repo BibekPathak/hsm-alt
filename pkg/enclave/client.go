@@ -3,14 +3,77 @@ package enclave
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 )
 
 type Client struct {
 	addr   string
 	client *http.Client
+	tls    bool
+}
+
+func NewClient(addr string) (*Client, error) {
+	return &Client{
+		addr:   addr,
+		client: &http.Client{},
+		tls:    false,
+	}, nil
+}
+
+func NewClientWithTLS(addr string, caCert, clientCert, clientKey []byte) (*Client, error) {
+	cert, err := tls.X509KeyPair(clientCert, clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load client cert: %w", err)
+	}
+
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to add CA cert")
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            caPool,
+		InsecureSkipVerify: false,
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+
+	return &Client{
+		addr:   addr,
+		client: &http.Client{Transport: transport},
+		tls:    true,
+	}, nil
+}
+
+func (c *Client) loadTLSCertsFromFiles(caFile, certFile, keyFile string) error {
+	caCert, err := os.ReadFile(caFile)
+	if err != nil {
+		return fmt.Errorf("failed to read CA cert: %w", err)
+	}
+	clientCert, err := os.ReadFile(certFile)
+	if err != nil {
+		return fmt.Errorf("failed to read client cert: %w", err)
+	}
+	clientKey, err := os.ReadFile(keyFile)
+	if err != nil {
+		return fmt.Errorf("failed to read client key: %w", err)
+	}
+
+	newClient, err := NewClientWithTLS(c.addr, caCert, clientCert, clientKey)
+	if err != nil {
+		return err
+	}
+	c.client = newClient.client
+	c.tls = true
+	return nil
 }
 
 type InitRequest struct {
@@ -127,13 +190,6 @@ type AggregateResponse struct {
 	Signature []byte `json:"signature"`
 }
 
-func NewClient(addr string) (*Client, error) {
-	return &Client{
-		addr:   addr,
-		client: &http.Client{},
-	}, nil
-}
-
 func (c *Client) doRequest(ctx context.Context, method, path string, reqBody, respBody interface{}) error {
 	var body []byte
 	if reqBody != nil {
@@ -144,7 +200,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, reqBody, re
 		}
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, method, "http://"+c.addr+path, bytes.NewReader(body))
+	scheme := "http"
+	if c.tls {
+		scheme = "https"
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, scheme+"://"+c.addr+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -376,8 +437,35 @@ func (c *Client) EvolveKey(ctx context.Context) (uint32, []byte, []byte, error) 
 	return 1, []byte{}, []byte{}, nil
 }
 
-func (c *Client) GetAttestation(ctx context.Context) ([]byte, []byte, error) {
-	return []byte{}, []byte{}, nil
+type AttestResponse struct {
+	Quote        []byte `json:"quote"`
+	Measurement  []byte `json:"measurement"`
+	IsSimulation bool   `json:"is_simulation"`
+}
+
+func (c *Client) GetAttestation(ctx context.Context) ([]byte, []byte, bool, error) {
+	url := fmt.Sprintf("http://%s/attest", c.addr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("failed to get attestation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, false, fmt.Errorf("attestation endpoint returned status %d", resp.StatusCode)
+	}
+
+	var attestResp AttestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&attestResp); err != nil {
+		return nil, nil, false, fmt.Errorf("failed to decode attestation: %w", err)
+	}
+
+	return attestResp.Quote, attestResp.Measurement, attestResp.IsSimulation, nil
 }
 
 func (c *Client) Close() error {

@@ -151,6 +151,19 @@ func (n *MPCNode) Stop() {
 }
 
 func (n *MPCNode) connectToPeers() {
+	var attestation []byte
+	if n.enclave != nil {
+		ctx, cancel := context.WithTimeout(n.ctx, 5*time.Second)
+		quote, _, isSim, err := n.enclave.GetAttestation(ctx)
+		cancel()
+		if err != nil {
+			n.logger.Warn("Failed to get local attestation", zap.Error(err))
+		} else if isSim {
+			attestation = quote
+			n.logger.Info("Got local attestation for peer handshake", zap.Bool("simulation", isSim))
+		}
+	}
+
 	for nodeID, addr := range n.config.PeerAddrs {
 		if uint32(nodeID) == n.config.NodeID {
 			continue
@@ -164,12 +177,35 @@ func (n *MPCNode) connectToPeers() {
 
 		client := gen.NewNodeServiceClient(conn)
 
-		n.peers[uint32(nodeID)] = &Peer{
+		peer := &Peer{
 			NodeID:   uint32(nodeID),
 			Endpoint: addr,
 			conn:     conn,
 			client:   client,
 		}
+
+		ctx, cancel := context.WithTimeout(n.ctx, 5*time.Second)
+		resp, err := client.Handshake(ctx, &gen.HandshakeRequest{
+			NodeId:      n.config.NodeID,
+			ClusterId:   n.config.ClusterID,
+			Attestation: attestation,
+		})
+		cancel()
+
+		if err != nil {
+			n.logger.Warn("Handshake failed with peer", zap.Uint32("node_id", uint32(nodeID)), zap.Error(err))
+			conn.Close()
+			continue
+		}
+
+		if !resp.Accepted {
+			n.logger.Warn("Peer rejected handshake", zap.Uint32("node_id", uint32(nodeID)))
+			conn.Close()
+			continue
+		}
+
+		n.logger.Info("Handshake successful with peer", zap.Uint32("node_id", uint32(nodeID)))
+		n.peers[uint32(nodeID)] = peer
 	}
 }
 

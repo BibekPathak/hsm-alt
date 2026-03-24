@@ -26,7 +26,44 @@ func RegisterNodeServiceServer(grpcServer *grpc.Server, node *MPCNode) {
 func (s *MPCNodeServiceServer) Handshake(ctx context.Context, req *gen.HandshakeRequest) (*gen.HandshakeResponse, error) {
 	s.node.logger.Info("Received handshake",
 		zap.Uint32("from_node", req.NodeId),
-		zap.String("cluster_id", req.ClusterId))
+		zap.String("cluster_id", req.ClusterId),
+		zap.Int("attestation_len", len(req.Attestation)))
+
+	if req.ClusterId != s.node.config.ClusterID {
+		s.node.logger.Warn("Cluster ID mismatch",
+			zap.String("expected", s.node.config.ClusterID),
+			zap.String("received", req.ClusterId))
+		return &gen.HandshakeResponse{
+			Accepted:  false,
+			NodeId:    s.node.config.NodeID,
+			ClusterId: s.node.config.ClusterID,
+		}, nil
+	}
+
+	verified := false
+	if len(req.Attestation) > 0 {
+		quote := req.Attestation
+		if len(quote) > 16 && string(quote[:14]) == "SGX_SIMULATION_" {
+			s.node.logger.Info("Accepted simulation mode attestation",
+				zap.Uint32("from_node", req.NodeId))
+			verified = true
+		}
+	} else {
+		s.node.logger.Warn("No attestation provided", zap.Uint32("from_node", req.NodeId))
+	}
+
+	if !verified {
+		s.node.logger.Warn("Attestation verification failed",
+			zap.Uint32("from_node", req.NodeId))
+		return &gen.HandshakeResponse{
+			Accepted:  false,
+			NodeId:    s.node.config.NodeID,
+			ClusterId: s.node.config.ClusterID,
+		}, nil
+	}
+
+	s.node.logger.Info("Handshake accepted",
+		zap.Uint32("from_node", req.NodeId))
 
 	return &gen.HandshakeResponse{
 		Accepted:  true,

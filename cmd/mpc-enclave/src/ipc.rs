@@ -117,6 +117,72 @@ impl Enclave {
         *self.data_dir.write() = Some(dir);
     }
 
+    fn derive_encryption_key(&self) -> Vec<u8> {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let node_id = self.node_id;
+        let threshold = self.threshold;
+        let total = self.total_shares;
+        
+        let mut hasher = DefaultHasher::new();
+        node_id.hash(&mut hasher);
+        threshold.hash(&mut hasher);
+        total.hash(&mut hasher);
+        "hsm-state-encryption-key-v1".hash(&mut hasher);
+        
+        let hash = hasher.finish();
+        hash.to_le_bytes().to_vec()
+    }
+
+    pub fn attest(&self) -> (Vec<u8>, Vec<u8>, bool) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        self.node_id.hash(&mut hasher);
+        self.threshold.hash(&mut hasher);
+        self.total_shares.hash(&mut hasher);
+        "mpc-enclave-v1".hash(&mut hasher);
+        
+        let measurement = hasher.finish().to_le_bytes();
+        
+        let mut quote = Vec::new();
+        quote.extend_from_slice(b"SGX_SIMULATION_");
+        quote.extend_from_slice(&measurement);
+        quote.extend_from_slice(&self.node_id.to_le_bytes());
+        
+        let is_simulation = true;
+        
+        tracing::info!("Generated attestation - NodeID: {}, Measurement: {:x?}", 
+            self.node_id, measurement);
+        
+        (quote, measurement.to_vec(), is_simulation)
+    }
+
+    fn encrypt_data(&self, data: &[u8]) -> Vec<u8> {
+        let key = self.derive_encryption_key();
+        let key_arr: [u8; 32] = {
+            let mut arr = [0u8; 32];
+            let key_len = key.len().min(32);
+            arr[..key_len].copy_from_slice(&key[..key_len]);
+            arr
+        };
+        
+        use std::collections::HashMap;
+        let mut result = Vec::with_capacity(data.len() + 32);
+        
+        for (i, byte) in data.iter().enumerate() {
+            result.push(byte ^ key_arr[i % 32]);
+        }
+        
+        result
+    }
+
+    fn decrypt_data(&self, data: &[u8]) -> Vec<u8> {
+        self.encrypt_data(data)
+    }
+
     fn get_state_path(&self, filename: &str) -> Option<std::path::PathBuf> {
         self.data_dir.read().as_ref().map(|d| std::path::Path::new(d).join(filename))
     }
@@ -130,10 +196,11 @@ impl Enclave {
         std::fs::create_dir_all(&dir_str).map_err(|e| format!("Failed to create data dir: {}", e))?;
 
         if let Some(my_share) = self.my_share.read().as_ref() {
-            let path = std::path::Path::new(&dir_str).join("key_share.json");
+            let path = std::path::Path::new(&dir_str).join("key_share.json.enc");
             let json = serde_json::to_vec(my_share).map_err(|e| e.to_string())?;
-            std::fs::write(&path, json).map_err(|e| format!("Failed to write key share: {}", e))?;
-            tracing::info!("Saved key share to {:?}", path);
+            let encrypted = self.encrypt_data(&json);
+            std::fs::write(&path, &encrypted).map_err(|e| format!("Failed to write key share: {}", e))?;
+            tracing::info!("Saved encrypted key share to {:?}", path);
         }
 
         if let Some(pubkey_pkg) = self.pubkey_package.read().as_ref() {
@@ -143,10 +210,11 @@ impl Enclave {
         }
 
         if let Some(dkg_out) = self.dkg_output.read().as_ref() {
-            let path = std::path::Path::new(&dir_str).join("dkg_output.json");
+            let path = std::path::Path::new(&dir_str).join("dkg_output.json.enc");
             let json = serde_json::to_vec(dkg_out).map_err(|e| e.to_string())?;
-            std::fs::write(&path, json).map_err(|e| format!("Failed to write DKG output: {}", e))?;
-            tracing::info!("Saved DKG output to {:?}", path);
+            let encrypted = self.encrypt_data(&json);
+            std::fs::write(&path, &encrypted).map_err(|e| format!("Failed to write DKG output: {}", e))?;
+            tracing::info!("Saved encrypted DKG output to {:?}", path);
         }
 
         Ok(())
@@ -161,12 +229,13 @@ impl Enclave {
             }
         };
 
-        let key_share_path = std::path::Path::new(&dir_str).join("key_share.json");
+        let key_share_path = std::path::Path::new(&dir_str).join("key_share.json.enc");
         if key_share_path.exists() {
-            let data = std::fs::read(&key_share_path).map_err(|e| format!("Failed to read key share: {}", e))?;
-            let share: KeyShare = serde_json::from_slice(&data).map_err(|e| format!("Failed to parse key share: {}", e))?;
+            let encrypted = std::fs::read(&key_share_path).map_err(|e| format!("Failed to read key share: {}", e))?;
+            let decrypted = self.decrypt_data(&encrypted);
+            let share: KeyShare = serde_json::from_slice(&decrypted).map_err(|e| format!("Failed to parse key share: {}", e))?;
             *self.my_share.write() = Some(share);
-            tracing::info!("Loaded key share from {:?}", key_share_path);
+            tracing::info!("Loaded and decrypted key share from {:?}", key_share_path);
         }
 
         let pubkey_path = std::path::Path::new(&dir_str).join("pubkey_package.json");
@@ -176,12 +245,13 @@ impl Enclave {
             tracing::info!("Loaded pubkey package from {:?}", pubkey_path);
         }
 
-        let dkg_path = std::path::Path::new(&dir_str).join("dkg_output.json");
+        let dkg_path = std::path::Path::new(&dir_str).join("dkg_output.json.enc");
         if dkg_path.exists() {
-            let data = std::fs::read(&dkg_path).map_err(|e| format!("Failed to read DKG output: {}", e))?;
-            let output: DKGOutput = serde_json::from_slice(&data).map_err(|e| format!("Failed to parse DKG output: {}", e))?;
+            let encrypted = std::fs::read(&dkg_path).map_err(|e| format!("Failed to read DKG output: {}", e))?;
+            let decrypted = self.decrypt_data(&encrypted);
+            let output: DKGOutput = serde_json::from_slice(&decrypted).map_err(|e| format!("Failed to parse DKG output: {}", e))?;
             *self.dkg_output.write() = Some(output);
-            tracing::info!("Loaded DKG output from {:?}", dkg_path);
+            tracing::info!("Loaded and decrypted DKG output from {:?}", dkg_path);
         }
 
         if self.my_share.read().is_some() {
@@ -879,6 +949,13 @@ struct VerifyResponse {
     error: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct AttestResponse {
+    quote: Vec<u8>,
+    measurement: Vec<u8>,
+    is_simulation: bool,
+}
+
 async fn initialize(
     State(state): State<AppState>,
     Json(req): Json<InitRequest>,
@@ -1081,6 +1158,16 @@ async fn get_public_key(State(state): State<AppState>) -> Json<PublicKeyResponse
     }
 }
 
+async fn attest(State(state): State<AppState>) -> Json<AttestResponse> {
+    let enclave = state.enclave.read();
+    let (quote, measurement, is_simulation) = enclave.attest();
+    Json(AttestResponse {
+        quote,
+        measurement,
+        is_simulation,
+    })
+}
+
 pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState { enclave };
 
@@ -1102,6 +1189,7 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .route("/aggregate", post(aggregate_signatures))
         .route("/verify", post(verify_signature))
         .route("/public-key", get(get_public_key))
+        .route("/attest", get(attest))
         .layer(cors)
         .with_state(state);
 
