@@ -686,7 +686,14 @@ impl Enclave {
         let share = self.my_share.read();
         let key_package = share.as_ref().ok_or("Key share not available")?;
 
-        let output = crypto::sign_round1(&key_package.key_package).map_err(|e| e.to_string())?;
+        let message_hash = {
+            let session_guard = self.signing_session.read();
+            session_guard.as_ref()
+                .and_then(|s| Some(s.message_hash.clone()))
+                .unwrap_or_default()
+        };
+
+        let output = crypto::sign_round1(&key_package.key_package, session_id, &message_hash).map_err(|e| e.to_string())?;
 
         // Store nonces in session
         {

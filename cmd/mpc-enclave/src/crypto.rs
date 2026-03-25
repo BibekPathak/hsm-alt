@@ -7,9 +7,11 @@ use frost::round2::sign;
 use frost::Identifier;
 use frost::{Signature, SigningPackage};
 use frost_ed25519 as frost;
-use rand::rngs::OsRng;
+use rand::rngs::{OsRng, StdRng};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
 use thiserror::Error;
 
 // Simple hash function for message binding (SHA-256)
@@ -253,13 +255,40 @@ pub fn dkg_generate(min_signers: u16, max_signers: u16) -> Result<DKGOutput> {
     })
 }
 
-pub fn sign_round1(key_package_bytes: &[u8]) -> Result<SignRound1Output> {
+pub fn sign_round1(
+    key_package_bytes: &[u8],
+    session_id: &str,
+    message_hash: &[u8],
+) -> Result<SignRound1Output> {
     let key_package: KeyPackage = serde_json::from_slice(key_package_bytes).map_err(|e| {
         CryptoError::SigningError(format!("Failed to deserialize key package: {:?}", e))
     })?;
 
+    let identifier = *key_package.identifier();
+    let id_bytes = identifier.serialize();
+
+    let mut seed = [0u8; 32];
+    seed[..16].copy_from_slice(&id_bytes);
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    session_id.hash(&mut hasher);
+    message_hash.hash(&mut hasher);
+    "frost-signing-v1".hash(&mut hasher);
+    let hash1 = hasher.finish();
+
+    hasher = std::collections::hash_map::DefaultHasher::new();
+    (hash1 + 1).hash(&mut hasher);
+    let hash2 = hasher.finish();
+
+    let hash1_bytes = hash1.to_le_bytes();
+    let hash2_bytes = hash2.to_le_bytes();
+    seed[16..24].copy_from_slice(&hash1_bytes[..8]);
+    seed[24..32].copy_from_slice(&hash2_bytes[..8]);
+
+    let mut rng = StdRng::from_seed(seed);
+
     let signing_share = key_package.signing_share();
-    let (nonces, commitments) = commit(signing_share, &mut OsRng);
+    let (nonces, commitments) = commit(signing_share, &mut rng);
 
     Ok(SignRound1Output {
         nonces: serde_json::to_vec(&nonces)?,
