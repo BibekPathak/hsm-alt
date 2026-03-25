@@ -119,6 +119,26 @@ func (p *Peer) Aggregate(ctx context.Context, message []byte, partialSigs map[ui
 	return resp.Signature, nil
 }
 
+func (p *Peer) DirectMessage(ctx context.Context, sessionID, msgType string, fromNode, toNode uint32, payload []byte) ([]byte, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("no client connection")
+	}
+	resp, err := p.client.DirectMessage(ctx, &gen.DirectMessageRequest{
+		SessionId:   sessionID,
+		MessageType: msgType,
+		FromNode:    fromNode,
+		ToNode:      toNode,
+		Payload:     payload,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("direct message failed: %s", resp.Error)
+	}
+	return resp.Payload, nil
+}
+
 func NewNode(cfg *config.NodeConfig, logger *zap.Logger) (*MPCNode, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -529,7 +549,8 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 		}
 	}
 
-	// Step 2: Round 1 - Collect nonce commitments from all participants
+	// Step 2: Round 1 - Each participant generates round1 data
+	// For direct communication, we collect directly from each participant
 	commitments := make(map[uint32][]byte)
 	for _, nodeID := range signers {
 		if nodeID == n.config.NodeID {
@@ -543,11 +564,29 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 			if !ok {
 				return nil, fmt.Errorf("peer %d not found", nodeID)
 			}
-			resp, err := peer.SendSignMessage(ctx, "round1", []byte(sessionID))
+			// Use DirectMessage for direct node-to-node communication
+			payload, err := peer.DirectMessage(ctx, sessionID, "round1_commitment", n.config.NodeID, nodeID, nil)
 			if err != nil {
 				return nil, fmt.Errorf("round1 failed for peer %d: %w", nodeID, err)
 			}
-			commitments[nodeID] = resp.Payload
+			commitments[nodeID] = payload
+		}
+	}
+
+	// Broadcast commitments to all signers (they need them for round2)
+	// Each signer needs all commitments to compute their partial signature
+	for _, nodeID := range signers {
+		if nodeID == n.config.NodeID {
+			continue
+		}
+		peer, ok := n.peers[nodeID]
+		if !ok {
+			continue
+		}
+		commitmentsJSON, _ := json.Marshal(commitments)
+		_, err := peer.SendSignMessage(ctx, "commitments", commitmentsJSON)
+		if err != nil {
+			n.logger.Warn("Failed to send commitments to peer", zap.Uint32("peer", nodeID), zap.Error(err))
 		}
 	}
 
@@ -555,7 +594,7 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 		zap.String("session_id", sessionID),
 		zap.Int("num_commitments", len(commitments)))
 
-	// Step 3: Round 2 - Get partial signatures from all participants
+	// Step 3: Round 2 - Get partial signatures from all participants using direct communication
 	partialSignatures := make(map[uint32][]byte)
 	for _, nodeID := range signers {
 		if nodeID == n.config.NodeID {
@@ -569,11 +608,13 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 			if !ok {
 				return nil, fmt.Errorf("peer %d not found", nodeID)
 			}
-			resp, err := peer.SendSignMessage(ctx, "round2", []byte(sessionID))
+			// Use DirectMessage for direct node-to-node communication
+			commitmentsJSON, _ := json.Marshal(commitments)
+			payload, err := peer.DirectMessage(ctx, sessionID, "round2_partial", n.config.NodeID, nodeID, commitmentsJSON)
 			if err != nil {
 				return nil, fmt.Errorf("round2 failed for peer %d: %w", nodeID, err)
 			}
-			partialSignatures[nodeID] = resp.Payload
+			partialSignatures[nodeID] = payload
 		}
 	}
 

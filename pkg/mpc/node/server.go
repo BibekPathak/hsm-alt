@@ -273,6 +273,9 @@ func (s *MPCNodeServiceServer) SignMessage(ctx context.Context, req *gen.NodeMes
 		respPayload, err = s.handleSignRound1(ctx, req)
 	case "round2":
 		respPayload, err = s.handleSignRound2(ctx, req)
+	case "commitments":
+		err = s.handleCommitments(ctx, req)
+		respPayload = []byte{}
 	default:
 		err = fmt.Errorf("unknown message type: %s", req.MessageType)
 	}
@@ -357,6 +360,18 @@ func (s *MPCNodeServiceServer) handleSignRound2(ctx context.Context, req *gen.No
 	return json.Marshal(response)
 }
 
+func (s *MPCNodeServiceServer) handleCommitments(ctx context.Context, req *gen.NodeMessage) error {
+	var commitments map[uint32][]byte
+	if err := json.Unmarshal(req.Payload, &commitments); err != nil {
+		return fmt.Errorf("failed to unmarshal commitments: %w", err)
+	}
+
+	s.node.logger.Info("Received commitments",
+		zap.Int("num_commitments", len(commitments)))
+
+	return nil
+}
+
 func (s *MPCNodeServiceServer) Heartbeat(ctx context.Context, req *gen.HeartbeatRequest) (*gen.HeartbeatResponse, error) {
 	return &gen.HeartbeatResponse{
 		NodeId:   s.node.config.NodeID,
@@ -434,6 +449,52 @@ func (s *MPCNodeServiceServer) AggregateSignatures(ctx context.Context, req *gen
 		Success:   true,
 		Signature: sig,
 		Error:     "",
+	}, nil
+}
+
+func (s *MPCNodeServiceServer) DirectMessage(ctx context.Context, req *gen.DirectMessageRequest) (*gen.DirectMessageResponse, error) {
+	s.node.logger.Info("Received DirectMessage",
+		zap.String("session_id", req.SessionId),
+		zap.String("message_type", req.MessageType),
+		zap.Uint32("from_node", req.FromNode),
+		zap.Uint32("to_node", req.ToNode),
+		zap.Int("payload_size", len(req.Payload)))
+
+	var respPayload []byte
+	var err error
+
+	switch req.MessageType {
+	case "round1_commitment":
+		err = s.node.enclave.SignStart(ctx, req.SessionId, nil, nil)
+		if err != nil {
+			return &gen.DirectMessageResponse{Success: false, Payload: nil, Error: err.Error()}, nil
+		}
+		_, commitment, err := s.node.enclave.SignRound1(ctx, req.SessionId)
+		if err != nil {
+			return &gen.DirectMessageResponse{Success: false, Payload: nil, Error: err.Error()}, nil
+		}
+		respPayload = commitment
+
+	case "round2_partial":
+		_, partialSig, err := s.node.enclave.SignRound2(ctx, req.SessionId, req.Payload)
+		if err != nil {
+			return &gen.DirectMessageResponse{Success: false, Payload: nil, Error: err.Error()}, nil
+		}
+		respPayload = partialSig
+
+	default:
+		s.node.logger.Warn("Unknown direct message type", zap.String("type", req.MessageType))
+		return &gen.DirectMessageResponse{Success: false, Payload: nil, Error: "unknown message type"}, nil
+	}
+
+	s.node.logger.Info("DirectMessage processed",
+		zap.String("session_id", req.SessionId),
+		zap.String("message_type", req.MessageType))
+
+	return &gen.DirectMessageResponse{
+		Success: true,
+		Payload: respPayload,
+		Error:   "",
 	}, nil
 }
 

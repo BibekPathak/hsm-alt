@@ -626,6 +626,7 @@ const (
 	NodeService_Handshake_FullMethodName           = "/mpc.NodeService/Handshake"
 	NodeService_DKGMessage_FullMethodName          = "/mpc.NodeService/DKGMessage"
 	NodeService_SignMessage_FullMethodName         = "/mpc.NodeService/SignMessage"
+	NodeService_DirectMessage_FullMethodName       = "/mpc.NodeService/DirectMessage"
 	NodeService_TriggerSign_FullMethodName         = "/mpc.NodeService/TriggerSign"
 	NodeService_AggregateSignatures_FullMethodName = "/mpc.NodeService/AggregateSignatures"
 	NodeService_Heartbeat_FullMethodName           = "/mpc.NodeService/Heartbeat"
@@ -638,6 +639,7 @@ type NodeServiceClient interface {
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	DKGMessage(ctx context.Context, in *NodeMessage, opts ...grpc.CallOption) (*NodeMessage, error)
 	SignMessage(ctx context.Context, in *NodeMessage, opts ...grpc.CallOption) (*NodeMessage, error)
+	DirectMessage(ctx context.Context, in *DirectMessageRequest, opts ...grpc.CallOption) (*DirectMessageResponse, error)
 	TriggerSign(ctx context.Context, in *TriggerSignRequest, opts ...grpc.CallOption) (*TriggerSignResponse, error)
 	AggregateSignatures(ctx context.Context, in *AggregateRequest, opts ...grpc.CallOption) (*AggregateResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
@@ -681,6 +683,16 @@ func (c *nodeServiceClient) SignMessage(ctx context.Context, in *NodeMessage, op
 	return out, nil
 }
 
+func (c *nodeServiceClient) DirectMessage(ctx context.Context, in *DirectMessageRequest, opts ...grpc.CallOption) (*DirectMessageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DirectMessageResponse)
+	err := c.cc.Invoke(ctx, NodeService_DirectMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeServiceClient) TriggerSign(ctx context.Context, in *TriggerSignRequest, opts ...grpc.CallOption) (*TriggerSignResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TriggerSignResponse)
@@ -718,6 +730,7 @@ type NodeServiceServer interface {
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	DKGMessage(context.Context, *NodeMessage) (*NodeMessage, error)
 	SignMessage(context.Context, *NodeMessage) (*NodeMessage, error)
+	DirectMessage(context.Context, *DirectMessageRequest) (*DirectMessageResponse, error)
 	TriggerSign(context.Context, *TriggerSignRequest) (*TriggerSignResponse, error)
 	AggregateSignatures(context.Context, *AggregateRequest) (*AggregateResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
@@ -739,6 +752,9 @@ func (UnimplementedNodeServiceServer) DKGMessage(context.Context, *NodeMessage) 
 }
 func (UnimplementedNodeServiceServer) SignMessage(context.Context, *NodeMessage) (*NodeMessage, error) {
 	return nil, status.Error(codes.Unimplemented, "method SignMessage not implemented")
+}
+func (UnimplementedNodeServiceServer) DirectMessage(context.Context, *DirectMessageRequest) (*DirectMessageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DirectMessage not implemented")
 }
 func (UnimplementedNodeServiceServer) TriggerSign(context.Context, *TriggerSignRequest) (*TriggerSignResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerSign not implemented")
@@ -824,6 +840,24 @@ func _NodeService_SignMessage_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_DirectMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DirectMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).DirectMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_DirectMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).DirectMessage(ctx, req.(*DirectMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeService_TriggerSign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TriggerSignRequest)
 	if err := dec(in); err != nil {
@@ -896,6 +930,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SignMessage",
 			Handler:    _NodeService_SignMessage_Handler,
+		},
+		{
+			MethodName: "DirectMessage",
+			Handler:    _NodeService_DirectMessage_Handler,
 		},
 		{
 			MethodName: "TriggerSign",

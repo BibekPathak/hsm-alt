@@ -174,6 +174,7 @@ service NodeService {
     rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
     rpc DKGMessage(NodeMessage) returns (NodeMessage);
     rpc SignMessage(NodeMessage) returns (NodeMessage);
+    rpc DirectMessage(DirectMessageRequest) returns (DirectMessageResponse);
     rpc TriggerSign(TriggerSignRequest) returns (TriggerSignResponse);
     rpc AggregateSignatures(AggregateRequest) returns (AggregateResponse);
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
@@ -220,6 +221,20 @@ message TriggerSignRequest {
 message TriggerSignResponse {
     bool accepted = 1;
     string session_id = 2;
+    string error = 3;
+}
+
+message DirectMessageRequest {
+    string session_id = 1;
+    string message_type = 2;
+    uint32 from_node = 3;
+    uint32 to_node = 4;
+    bytes payload = 5;
+}
+
+message DirectMessageResponse {
+    bool success = 1;
+    bytes payload = 2;
     string error = 3;
 }
 
