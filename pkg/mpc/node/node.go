@@ -3,8 +3,10 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,20 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+)
+
+const (
+	signRound1Timeout = 10 * time.Second
+	signRound2Timeout = 15 * time.Second
+	aggregateTimeout  = 5 * time.Second
+	peerCallTimeout   = 10 * time.Second
+)
+
+var (
+	ErrNodeUnreachable = errors.New("node unreachable")
+	ErrNodeTimeout     = errors.New("node timeout")
+	ErrInvalidResponse = errors.New("invalid response from node")
+	ErrInsufficientSig = errors.New("insufficient valid signatures")
 )
 
 type NodeState int
@@ -71,6 +87,12 @@ func (p *Peer) SendSignMessage(ctx context.Context, msgType string, payload []by
 		FromNode:    p.NodeID,
 		Payload:     payload,
 	})
+}
+
+func (p *Peer) callWithTimeout(ctx context.Context, timeout time.Duration, fn func(ctx context.Context) error) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return fn(ctx)
 }
 
 func (p *Peer) SendDKGMessage(ctx context.Context, msgType string, payload []byte) (*gen.NodeMessage, error) {
@@ -513,11 +535,30 @@ func (n *MPCNode) Sign(ctx context.Context, message []byte, signers []uint32) ([
 }
 
 func (n *MPCNode) excludeFailedSigners(signers []uint32, err error) []uint32 {
-	// Simple heuristic: if error contains a peer ID, remove that peer
-	// For now, remove the last signer as a fallback
 	if len(signers) <= 1 {
 		return signers
 	}
+
+	errStr := err.Error()
+
+	for _, signer := range signers {
+		if signer == n.config.NodeID {
+			continue
+		}
+		signerStr := fmt.Sprintf("peer %d", signer)
+		if strings.Contains(errStr, signerStr) {
+			n.logger.Info("Excluding failed peer", zap.Uint32("peer_id", signer))
+			newSigners := make([]uint32, 0, len(signers)-1)
+			for _, s := range signers {
+				if s != signer {
+					newSigners = append(newSigners, s)
+				}
+			}
+			return newSigners
+		}
+	}
+
+	_ = errStr
 	return signers[:len(signers)-1]
 }
 

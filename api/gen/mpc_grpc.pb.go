@@ -629,6 +629,7 @@ const (
 	NodeService_DirectMessage_FullMethodName       = "/mpc.NodeService/DirectMessage"
 	NodeService_TriggerSign_FullMethodName         = "/mpc.NodeService/TriggerSign"
 	NodeService_AggregateSignatures_FullMethodName = "/mpc.NodeService/AggregateSignatures"
+	NodeService_AbortSign_FullMethodName           = "/mpc.NodeService/AbortSign"
 	NodeService_Heartbeat_FullMethodName           = "/mpc.NodeService/Heartbeat"
 )
 
@@ -642,6 +643,7 @@ type NodeServiceClient interface {
 	DirectMessage(ctx context.Context, in *DirectMessageRequest, opts ...grpc.CallOption) (*DirectMessageResponse, error)
 	TriggerSign(ctx context.Context, in *TriggerSignRequest, opts ...grpc.CallOption) (*TriggerSignResponse, error)
 	AggregateSignatures(ctx context.Context, in *AggregateRequest, opts ...grpc.CallOption) (*AggregateResponse, error)
+	AbortSign(ctx context.Context, in *AbortSignRequest, opts ...grpc.CallOption) (*AbortSignResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 }
 
@@ -713,6 +715,16 @@ func (c *nodeServiceClient) AggregateSignatures(ctx context.Context, in *Aggrega
 	return out, nil
 }
 
+func (c *nodeServiceClient) AbortSign(ctx context.Context, in *AbortSignRequest, opts ...grpc.CallOption) (*AbortSignResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortSignResponse)
+	err := c.cc.Invoke(ctx, NodeService_AbortSign_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartbeatResponse)
@@ -733,6 +745,7 @@ type NodeServiceServer interface {
 	DirectMessage(context.Context, *DirectMessageRequest) (*DirectMessageResponse, error)
 	TriggerSign(context.Context, *TriggerSignRequest) (*TriggerSignResponse, error)
 	AggregateSignatures(context.Context, *AggregateRequest) (*AggregateResponse, error)
+	AbortSign(context.Context, *AbortSignRequest) (*AbortSignResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
@@ -761,6 +774,9 @@ func (UnimplementedNodeServiceServer) TriggerSign(context.Context, *TriggerSignR
 }
 func (UnimplementedNodeServiceServer) AggregateSignatures(context.Context, *AggregateRequest) (*AggregateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AggregateSignatures not implemented")
+}
+func (UnimplementedNodeServiceServer) AbortSign(context.Context, *AbortSignRequest) (*AbortSignResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AbortSign not implemented")
 }
 func (UnimplementedNodeServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
@@ -894,6 +910,24 @@ func _NodeService_AggregateSignatures_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_AbortSign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortSignRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).AbortSign(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_AbortSign_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).AbortSign(ctx, req.(*AbortSignRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartbeatRequest)
 	if err := dec(in); err != nil {
@@ -942,6 +976,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AggregateSignatures",
 			Handler:    _NodeService_AggregateSignatures_Handler,
+		},
+		{
+			MethodName: "AbortSign",
+			Handler:    _NodeService_AbortSign_Handler,
 		},
 		{
 			MethodName: "Heartbeat",

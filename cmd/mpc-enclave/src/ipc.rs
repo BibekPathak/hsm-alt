@@ -956,6 +956,17 @@ struct AttestResponse {
     is_simulation: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SignAbortRequest {
+    session_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SignAbortResponse {
+    success: bool,
+    error: String,
+}
+
 async fn initialize(
     State(state): State<AppState>,
     Json(req): Json<InitRequest>,
@@ -1148,6 +1159,20 @@ async fn verify_signature(State(state): State<AppState>, Json(req): Json<VerifyR
     }
 }
 
+async fn sign_abort(State(state): State<AppState>, Json(req): Json<SignAbortRequest>) -> Json<SignAbortResponse> {
+    let enclave = state.enclave.read();
+    match enclave.sign_abort(&req.session_id) {
+        Ok(()) => Json(SignAbortResponse {
+            success: true,
+            error: String::new(),
+        }),
+        Err(e) => Json(SignAbortResponse {
+            success: false,
+            error: e,
+        }),
+    }
+}
+
 async fn get_public_key(State(state): State<AppState>) -> Json<PublicKeyResponse> {
     let enclave = state.enclave.read();
     match enclave.get_public_key() {
@@ -1186,6 +1211,7 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .route("/sign/start", post(sign_start))
         .route("/sign/round1", post(sign_round1))
         .route("/sign/round2", post(sign_round2))
+        .route("/sign/abort", post(sign_abort))
         .route("/aggregate", post(aggregate_signatures))
         .route("/verify", post(verify_signature))
         .route("/public-key", get(get_public_key))

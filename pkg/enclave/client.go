@@ -383,6 +383,30 @@ func (c *Client) SignRound2(ctx context.Context, sessionID string, signingPackag
 	return resp.PartialSignature, resp.Commitment, nil
 }
 
+type SignAbortRequest struct {
+	SessionID string `json:"session_id"`
+}
+
+type SignAbortResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
+}
+
+func (c *Client) SignAbort(ctx context.Context, sessionID string) error {
+	req := SignAbortRequest{SessionID: sessionID}
+	resp := &SignAbortResponse{}
+
+	if err := c.doRequest(ctx, "POST", "/sign/abort", req, resp); err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("sign abort failed: %s", resp.Error)
+	}
+
+	return nil
+}
+
 func (c *Client) GetPubkeyPackage(ctx context.Context) ([]byte, error) {
 	resp := &PublicKeyResponse{}
 	if err := c.doRequest(ctx, "GET", "/public-key", nil, resp); err != nil {

@@ -177,6 +177,7 @@ service NodeService {
     rpc DirectMessage(DirectMessageRequest) returns (DirectMessageResponse);
     rpc TriggerSign(TriggerSignRequest) returns (TriggerSignResponse);
     rpc AggregateSignatures(AggregateRequest) returns (AggregateResponse);
+    rpc AbortSign(AbortSignRequest) returns (AbortSignResponse);
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
 
@@ -247,6 +248,15 @@ message AggregateResponse {
     bool success = 1;
     bytes signature = 2;
     string error = 3;
+}
+
+message AbortSignRequest {
+    string session_id = 1;
+}
+
+message AbortSignResponse {
+    bool success = 1;
+    string error = 2;
 }
 
 // Admin / Operator API

@@ -498,6 +498,35 @@ func (s *MPCNodeServiceServer) DirectMessage(ctx context.Context, req *gen.Direc
 	}, nil
 }
 
+func (s *MPCNodeServiceServer) AbortSign(ctx context.Context, req *gen.AbortSignRequest) (*gen.AbortSignResponse, error) {
+	s.node.logger.Info("Received AbortSign request",
+		zap.String("session_id", req.SessionId))
+
+	if s.node.enclave == nil {
+		return &gen.AbortSignResponse{
+			Success: false,
+			Error:   "enclave not initialized",
+		}, nil
+	}
+
+	err := s.node.enclave.SignAbort(ctx, req.SessionId)
+	if err != nil {
+		s.node.logger.Warn("SignAbort failed", zap.Error(err))
+		return &gen.AbortSignResponse{
+			Success: false,
+			Error:   err.Error(),
+		}, nil
+	}
+
+	s.node.logger.Info("Sign session aborted",
+		zap.String("session_id", req.SessionId))
+
+	return &gen.AbortSignResponse{
+		Success: true,
+		Error:   "",
+	}, nil
+}
+
 type signingSessionInfo struct {
 	sessionID    string
 	message      []byte
