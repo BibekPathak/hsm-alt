@@ -2,9 +2,11 @@ package node
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"sync"
@@ -669,8 +671,8 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 		zap.String("session_id", sessionID),
 		zap.Int("num_partial_sigs", len(partialSignatures)))
 
-	// Step 4: Aggregate partial signatures
-	signature, err := n.enclave.AggregateSignatures(ctx, message, partialSignatures)
+	// Step 4: Aggregate partial signatures (distributed - any node can aggregate)
+	signature, err := n.doAggregate(ctx, message, partialSignatures, signers)
 	if err != nil {
 		return nil, fmt.Errorf("aggregate failed: %w", err)
 	}
@@ -680,6 +682,43 @@ func (n *MPCNode) doSign(ctx context.Context, message []byte, signers []uint32) 
 		zap.Binary("signature", signature))
 
 	return signature, nil
+}
+
+func (n *MPCNode) doAggregate(ctx context.Context, message []byte, partialSignatures map[uint32][]byte, signers []uint32) ([]byte, error) {
+	availableAggregators := make([]uint32, 0, len(signers))
+	for _, nodeID := range signers {
+		if nodeID == n.config.NodeID {
+			availableAggregators = append(availableAggregators, nodeID)
+		} else if peer, ok := n.peers[nodeID]; ok && peer.client != nil {
+			availableAggregators = append(availableAggregators, nodeID)
+		}
+	}
+
+	if len(availableAggregators) == 0 {
+		return nil, fmt.Errorf("no available aggregators")
+	}
+
+	randIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(availableAggregators))))
+	if err != nil {
+		n.logger.Warn("Failed to get secure random, falling back to time-based", zap.Error(err))
+		randIdx = big.NewInt(int64(len(availableAggregators)))
+	}
+	aggregatorNode := availableAggregators[randIdx.Int64()]
+	n.logger.Info("Using distributed aggregation (random selection)",
+		zap.Uint32("aggregator", aggregatorNode),
+		zap.Int("num_partials", len(partialSignatures)),
+		zap.Int("available", len(availableAggregators)))
+
+	if aggregatorNode == n.config.NodeID {
+		return n.enclave.AggregateSignatures(ctx, message, partialSignatures)
+	}
+
+	peer, ok := n.peers[aggregatorNode]
+	if !ok {
+		return nil, fmt.Errorf("aggregator peer not found")
+	}
+
+	return peer.Aggregate(ctx, message, partialSignatures)
 }
 
 func (n *MPCNode) StartDKG(ctx context.Context, minSigners, maxSigners uint32) error {
