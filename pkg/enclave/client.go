@@ -86,10 +86,11 @@ type InitResponse struct {
 }
 
 type StatusResponse struct {
-	State       string `json:"state"`
-	Epoch       uint32 `json:"epoch"`
-	PublicKey   []byte `json:"public_key"`
-	Initialized bool   `json:"initialized"`
+	State          string `json:"state"`
+	Epoch          uint32 `json:"epoch"`
+	PublicKey      []byte `json:"public_key"`
+	Initialized    bool   `json:"initialized"`
+	IdentityPubkey []byte `json:"identity_pubkey"`
 }
 
 type DkgStartRequest struct {
@@ -241,14 +242,14 @@ func (c *Client) Initialize(ctx context.Context, clusterID string, threshold, to
 	return nil
 }
 
-func (c *Client) GetStatus(ctx context.Context) (string, uint32, []byte, bool, error) {
+func (c *Client) GetStatus(ctx context.Context) (string, uint32, []byte, bool, []byte, error) {
 	resp := &StatusResponse{}
 
 	if err := c.doRequest(ctx, "GET", "/status", nil, resp); err != nil {
-		return "", 0, nil, false, err
+		return "", 0, nil, false, nil, err
 	}
 
-	return resp.State, resp.Epoch, resp.PublicKey, resp.Initialized, nil
+	return resp.State, resp.Epoch, resp.PublicKey, resp.Initialized, resp.IdentityPubkey, nil
 }
 
 func (c *Client) StartDKG(ctx context.Context, minSigners, maxSigners uint32) error {

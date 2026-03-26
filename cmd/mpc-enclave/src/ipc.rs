@@ -75,6 +75,10 @@ pub struct Enclave {
     key_package: RwLock<Option<Vec<u8>>>,
     pubkey_package: RwLock<Option<Vec<u8>>>,
     
+    // Cryptographic identity (Ed25519 keypair for node identity)
+    identity_key: RwLock<Option<Vec<u8>>>,
+    identity_pubkey: RwLock<Option<Vec<u8>>>,
+    
     // Session state
     current_epoch: RwLock<u32>,
     epoch_state: RwLock<Option<EpochState>>,
@@ -84,6 +88,9 @@ pub struct Enclave {
     
     // DKG session
     dkg_session: RwLock<Option<DKGSession>>,
+    
+    // Replay protection - track used (session_id, round, message_hash) tuples
+    replay_protection: RwLock<BTreeMap<String, Vec<u8>>>,
 }
 
 impl Enclave {
@@ -99,11 +106,60 @@ impl Enclave {
             my_share: RwLock::new(None),
             key_package: RwLock::new(None),
             pubkey_package: RwLock::new(None),
+            identity_key: RwLock::new(None),
+            identity_pubkey: RwLock::new(None),
             current_epoch: RwLock::new(0),
             epoch_state: RwLock::new(None),
             signing_session: RwLock::new(None),
             dkg_session: RwLock::new(None),
+            replay_protection: RwLock::new(BTreeMap::new()),
         }
+    }
+
+    fn check_replay(&self, session_id: &str, round: u8, message_hash: &[u8]) -> bool {
+        let key = format!("{}:{}:{:x?}", session_id, round, message_hash);
+        let replay_map = self.replay_protection.read();
+        !replay_map.contains_key(&key)
+    }
+
+    fn mark_replay_used(&self, session_id: &str, round: u8, message_hash: &[u8]) {
+        let key = format!("{}:{}:{:x?}", session_id, round, message_hash);
+        let mut replay_map = self.replay_protection.write();
+        replay_map.insert(key, message_hash.to_vec());
+        
+        // Keep only last 1000 entries to prevent memory growth
+        if replay_map.len() > 1000 {
+            let keys: Vec<String> = replay_map.keys().cloned().take(100).collect();
+            for k in keys {
+                replay_map.remove(&k);
+            }
+        }
+    }
+
+    pub fn generate_identity(&self) -> Result<(Vec<u8>, Vec<u8>), String> {
+        use ed25519_dalek::{SigningKey, VerifyingKey};
+        use rand::Rng;
+        
+        let mut rng = rand::thread_rng();
+        let mut seed = [0u8; 32];
+        rng.fill(&mut seed);
+        
+        let signing_key = SigningKey::from_bytes(&seed);
+        let verifying_key = signing_key.verifying_key();
+        
+        let secret_bytes = signing_key.to_bytes().to_vec();
+        let public_bytes = verifying_key.to_bytes().to_vec();
+        
+        *self.identity_key.write() = Some(secret_bytes.clone());
+        *self.identity_pubkey.write() = Some(public_bytes.clone());
+        
+        tracing::info!("Generated identity key for node {}", self.node_id);
+        
+        Ok((secret_bytes, public_bytes))
+    }
+
+    pub fn get_identity_pubkey(&self) -> Option<Vec<u8>> {
+        self.identity_pubkey.read().clone()
     }
 
     fn get_current_time(&self) -> u64 {
@@ -117,22 +173,36 @@ impl Enclave {
         *self.data_dir.write() = Some(dir);
     }
 
-    fn derive_encryption_key(&self) -> Vec<u8> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+    fn derive_encryption_key(&self) -> [u8; 32] {
+        use sha2::{Sha256, Digest};
         
         let node_id = self.node_id;
         let threshold = self.threshold;
         let total = self.total_shares;
         
-        let mut hasher = DefaultHasher::new();
-        node_id.hash(&mut hasher);
-        threshold.hash(&mut hasher);
-        total.hash(&mut hasher);
-        "hsm-state-encryption-key-v1".hash(&mut hasher);
+        let mut hasher = Sha256::new();
+        hasher.update(node_id.to_le_bytes());
+        hasher.update(threshold.to_le_bytes());
+        hasher.update(total.to_le_bytes());
+        hasher.update(b"hsm-state-encryption-key-v1");
         
-        let hash = hasher.finish();
-        hash.to_le_bytes().to_vec()
+        let result = hasher.finalize();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&result);
+        key
+    }
+
+    fn derive_salt(&self) -> [u8; 16] {
+        use sha2::{Sha256, Digest};
+        
+        let mut hasher = Sha256::new();
+        hasher.update(self.node_id.to_le_bytes());
+        hasher.update(b"hsm-salt-v1");
+        
+        let result = hasher.finalize();
+        let mut salt = [0u8; 16];
+        salt.copy_from_slice(&result[..16]);
+        salt
     }
 
     pub fn attest(&self) -> (Vec<u8>, Vec<u8>, bool) {
@@ -161,26 +231,50 @@ impl Enclave {
     }
 
     fn encrypt_data(&self, data: &[u8]) -> Vec<u8> {
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::{Aead, OsRng};
+        
         let key = self.derive_encryption_key();
-        let key_arr: [u8; 32] = {
-            let mut arr = [0u8; 32];
-            let key_len = key.len().min(32);
-            arr[..key_len].copy_from_slice(&key[..key_len]);
-            arr
-        };
+        let cipher = Aes256Gcm::new_from_slice(&key)
+            .expect("Invalid key length");
         
-        use std::collections::HashMap;
-        let mut result = Vec::with_capacity(data.len() + 32);
+        let mut nonce_bytes = [0u8; 12];
+        use rand::Rng;
+        OsRng.fill(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
         
-        for (i, byte) in data.iter().enumerate() {
-            result.push(byte ^ key_arr[i % 32]);
-        }
+        let ciphertext = cipher.encrypt(nonce, data)
+            .expect("Encryption failed");
+        
+        let mut result = Vec::with_capacity(12 + ciphertext.len());
+        result.extend_from_slice(&nonce_bytes);
+        result.extend_from_slice(&ciphertext);
         
         result
     }
 
     fn decrypt_data(&self, data: &[u8]) -> Vec<u8> {
-        self.encrypt_data(data)
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::Aead;
+        
+        if data.len() < 12 {
+            return vec![];
+        }
+        
+        let key = self.derive_encryption_key();
+        let cipher = Aes256Gcm::new_from_slice(&key)
+            .expect("Invalid key length");
+        
+        let nonce = Nonce::from_slice(&data[..12]);
+        let ciphertext = &data[12..];
+        
+        match cipher.decrypt(nonce, ciphertext) {
+            Ok(plaintext) => plaintext,
+            Err(e) => {
+                tracing::error!("Decryption failed: {:?}", e);
+                vec![]
+            }
+        }
     }
 
     fn get_state_path(&self, filename: &str) -> Option<std::path::PathBuf> {
@@ -280,26 +374,35 @@ impl Enclave {
     pub fn initialize(&self, cluster_id: String) -> Result<(), String> {
         *self.cluster_id.write() = Some(cluster_id);
         
-        // Try to load existing state from disk
-        match self.load_state() {
-            Ok(true) => {
-                tracing::info!("Loaded existing key state from disk");
-                *self.state.write() = EnclaveState::Ready;
+        // Generate or load identity key
+        if self.identity_key.read().is_none() {
+            let (secret, public) = self.generate_identity()?;
+            tracing::info!("Generated new identity key for node {}", self.node_id);
+            
+            // Try to load existing state
+            match self.load_state() {
+                Ok(true) => {
+                    tracing::info!("Loaded existing key state from disk");
+                    *self.state.write() = EnclaveState::Ready;
+                }
+                Ok(false) => {
+                    tracing::info!("No existing state found, starting fresh");
+                    *self.state.write() = EnclaveState::Ready;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load state: {}", e);
+                    *self.state.write() = EnclaveState::Ready;
+                }
             }
-            Ok(false) => {
-                tracing::info!("No existing state found, starting fresh");
-                *self.state.write() = EnclaveState::Ready;
-            }
-            Err(e) => {
-                tracing::warn!("Failed to load state: {}", e);
-                *self.state.write() = EnclaveState::Ready;
-            }
+        } else {
+            tracing::info!("Using existing identity key");
+            *self.state.write() = EnclaveState::Ready;
         }
         
         Ok(())
     }
 
-    pub fn get_status(&self) -> (String, u32, Vec<u8>, bool) {
+    pub fn get_status(&self) -> (String, u32, Vec<u8>, bool, Vec<u8>) {
         let state = match &*self.state.read() {
             EnclaveState::Uninitialized => "uninitialized".to_string(),
             EnclaveState::Initializing => "initializing".to_string(),
@@ -320,7 +423,9 @@ impl Enclave {
             .map(|o| o.public_key.key.clone())
             .unwrap_or_default();
 
-        (state, epoch, public_key, initialized)
+        let identity_pubkey = self.identity_pubkey.read().clone().unwrap_or_default();
+
+        (state, epoch, public_key, initialized, identity_pubkey)
     }
 
     pub fn dkg_start(&self, _min_signers: u16, _max_signers: u16) -> Result<DkgStartResult, String> {
@@ -683,6 +788,17 @@ impl Enclave {
             }
         }
 
+        // Check replay protection
+        let message_hash = {
+            let session_guard = self.signing_session.read();
+            session_guard.as_ref()
+                .map(|s| s.message_hash.clone())
+                .unwrap_or_default()
+        };
+        if !self.check_replay(session_id, 1, &message_hash) {
+            return Err("Replay attack detected: session already used".to_string());
+        }
+
         let share = self.my_share.read();
         let key_package = share.as_ref().ok_or("Key share not available")?;
 
@@ -694,6 +810,9 @@ impl Enclave {
         };
 
         let output = crypto::sign_round1(&key_package.key_package, session_id, &message_hash).map_err(|e| e.to_string())?;
+
+        // Mark as used for replay protection
+        self.mark_replay_used(session_id, 1, &message_hash);
 
         // Store nonces in session
         {
@@ -748,6 +867,11 @@ impl Enclave {
             }
         };
 
+        // Check replay protection for round 2
+        if !self.check_replay(session_id, 2, &message_hash) {
+            return Err("Replay attack detected: round 2 already executed".to_string());
+        }
+
         let nonces = nonces.ok_or("No nonces from round 1")?;
 
         let share = self.my_share.read();
@@ -768,6 +892,9 @@ impl Enclave {
             &commitments,
         )
         .map_err(|e| e.to_string())?;
+
+        // Mark round 2 as used for replay protection
+        self.mark_replay_used(session_id, 2, &message_hash);
 
         *self.state.write() = EnclaveState::Ready;
 
@@ -827,6 +954,7 @@ struct StatusResponse {
     epoch: u32,
     public_key: Vec<u8>,
     initialized: bool,
+    identity_pubkey: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -993,12 +1121,13 @@ async fn initialize(
 
 async fn get_status(State(state): State<AppState>) -> Json<StatusResponse> {
     let enclave = state.enclave.read();
-    let (state_str, epoch, public_key, initialized) = enclave.get_status();
+    let (state_str, epoch, public_key, initialized, identity_pubkey) = enclave.get_status();
     Json(StatusResponse {
         state: state_str,
         epoch,
         public_key,
         initialized,
+        identity_pubkey,
     })
 }
 
@@ -1226,8 +1355,9 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .layer(cors)
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tracing::info!("Enclave HTTP server listening on {}", addr);
+    // Bind to localhost only - prevents remote attacks
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    tracing::info!("Enclave HTTP server listening on {} (localhost only)", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
