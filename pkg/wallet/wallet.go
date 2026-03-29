@@ -59,3 +59,14 @@ type BalanceResponse struct {
 	Balance string `json:"balance"`
 	Chain   string `json:"chain"`
 }
+
+// CreateAddressRequest is the API request to add a new address to a wallet
+type CreateAddressRequest struct {
+	Chain string `json:"chain"` // "ethereum", "solana"
+}
+
+// CreateAddressResponse is the API response for address creation
+type CreateAddressResponse struct {
+	WalletID string  `json:"wallet_id"`
+	Account  Account `json:"account"`
+}

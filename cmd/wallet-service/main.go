@@ -80,6 +80,7 @@ func main() {
 	r.Get("/wallet", server.handleListWallets)
 	r.Get("/wallet/{id}", server.handleGetWallet)
 	r.Get("/wallet/{id}/address", server.handleGetAddress)
+	r.Post("/wallet/{id}/address", server.handleCreateAddress)
 	r.Get("/wallet/{id}/balance", server.handleGetBalance)
 	r.Post("/wallet/{id}/send", server.handleSendTx)
 
@@ -199,6 +200,69 @@ func (s *Server) handleGetAddress(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]string{
 		"address": account.Address,
 		"chain":   "ethereum",
+	})
+}
+
+func (s *Server) handleCreateAddress(w http.ResponseWriter, r *http.Request) {
+	walletID := chi.URLParam(r, "id")
+
+	// Verify wallet exists
+	_, err := s.walletStore.GetWallet(walletID)
+	if err != nil {
+		sendError(w, http.StatusNotFound, fmt.Sprintf("Wallet not found: %v", err))
+		return
+	}
+
+	var req wallet.CreateAddressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Chain == "" {
+		req.Chain = "ethereum"
+	}
+
+	// Count existing accounts for this chain
+	existingAccounts, _ := s.walletStore.GetAccountsForWallet(walletID)
+	nextIndex := uint32(0)
+	for _, acc := range existingAccounts {
+		if acc.Chain == req.Chain && acc.Index >= nextIndex {
+			nextIndex = acc.Index + 1
+		}
+	}
+
+	// Generate new ECDSA keypair
+	ecdsaSigner, err := signer.NewECDSASigner()
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to generate key: %v", err))
+		return
+	}
+
+	// Create unique signer key for this account
+	signerKey := fmt.Sprintf("%s_%s_%d", walletID, req.Chain, nextIndex)
+	s.ecdsaSigners[signerKey] = ecdsaSigner
+
+	// Create account
+	account := &wallet.Account{
+		WalletID:   walletID,
+		Chain:      req.Chain,
+		Address:    ecdsaSigner.EthereumAddress(),
+		PubKey:     ecdsaSigner.CompressedPublicKey(),
+		SignerType: "ecdsa",
+		Index:      nextIndex,
+	}
+
+	if err := s.walletStore.SaveAccount(account); err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save account: %v", err))
+		return
+	}
+
+	log.Printf("Created address %s for wallet %s (index %d)", account.Address, walletID, nextIndex)
+
+	sendJSON(w, http.StatusCreated, wallet.CreateAddressResponse{
+		WalletID: walletID,
+		Account:  *account,
 	})
 }
 

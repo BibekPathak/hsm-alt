@@ -81,7 +81,9 @@ func (s *Store) SaveAccount(account *Account) error {
 		return fmt.Errorf("failed to marshal account: %w", err)
 	}
 
-	accountPath := filepath.Join(s.baseDir, "accounts", account.WalletID+"_"+account.Chain+".json")
+	// Use index in filename to support multiple accounts per chain
+	accountPath := filepath.Join(s.baseDir, "accounts",
+		fmt.Sprintf("%s_%s_%d.json", account.WalletID, account.Chain, account.Index))
 	if err := os.WriteFile(accountPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write account: %w", err)
 	}
@@ -113,24 +115,26 @@ func (s *Store) GetWallet(id string) (*Wallet, error) {
 
 // GetAccount retrieves an account for a wallet and chain
 func (s *Store) GetAccount(walletID, chain string) (*Account, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	accountPath := filepath.Join(s.baseDir, "accounts", walletID+"_"+chain+".json")
-	data, err := os.ReadFile(accountPath)
+	accounts, err := s.GetAccountsForWallet(walletID)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("account not found for %s on %s", walletID, chain)
+		return nil, err
+	}
+
+	// Find first account for the requested chain
+	for _, acc := range accounts {
+		if acc.Chain == chain && acc.Index == 0 {
+			return &acc, nil
 		}
-		return nil, fmt.Errorf("failed to read account: %w", err)
 	}
 
-	var account Account
-	if err := json.Unmarshal(data, &account); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal account: %w", err)
+	// If no index 0, return first account for this chain
+	for _, acc := range accounts {
+		if acc.Chain == chain {
+			return &acc, nil
+		}
 	}
 
-	return &account, nil
+	return nil, fmt.Errorf("account not found for %s on %s", walletID, chain)
 }
 
 // GetAccountsForWallet retrieves all accounts for a wallet
