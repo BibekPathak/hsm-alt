@@ -70,3 +70,19 @@ type CreateAddressResponse struct {
 	WalletID string  `json:"wallet_id"`
 	Account  Account `json:"account"`
 }
+
+// DeleteWalletResponse is the API response for wallet deletion
+type DeleteWalletResponse struct {
+	WalletID string `json:"wallet_id"`
+	Deleted  bool   `json:"deleted"`
+	Message  string `json:"message"`
+}
+
+// DeleteAccountResponse is the API response for account deletion
+type DeleteAccountResponse struct {
+	WalletID string `json:"wallet_id"`
+	Chain    string `json:"chain"`
+	Index    uint32 `json:"index"`
+	Deleted  bool   `json:"deleted"`
+	Message  string `json:"message"`
+}

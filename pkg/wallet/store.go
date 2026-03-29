@@ -235,3 +235,97 @@ func now() time.Time {
 func containsPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
+
+// DeleteWallet deletes a wallet and all its accounts
+func (s *Store) DeleteWallet(walletID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Verify wallet exists
+	walletPath := filepath.Join(s.baseDir, walletID+".json")
+	if _, err := os.Stat(walletPath); os.IsNotExist(err) {
+		return fmt.Errorf("wallet not found: %s", walletID)
+	}
+
+	// Delete all accounts for this wallet
+	accountDir := filepath.Join(s.baseDir, "accounts")
+	entries, err := os.ReadDir(accountDir)
+	if err == nil {
+		prefix := walletID + "_"
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if containsPrefix(entry.Name(), prefix) {
+				os.Remove(filepath.Join(accountDir, entry.Name()))
+			}
+		}
+	}
+
+	// Delete wallet file
+	if err := os.Remove(walletPath); err != nil {
+		return fmt.Errorf("failed to delete wallet: %w", err)
+	}
+
+	// Update index
+	if err := s.removeFromIndex(walletID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// DeleteAccount deletes a specific account from a wallet
+func (s *Store) DeleteAccount(walletID, chain string, index uint32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Verify wallet exists
+	walletPath := filepath.Join(s.baseDir, walletID+".json")
+	if _, err := os.Stat(walletPath); os.IsNotExist(err) {
+		return fmt.Errorf("wallet not found: %s", walletID)
+	}
+
+	// Find and delete the account file
+	accountPath := filepath.Join(s.baseDir, "accounts",
+		fmt.Sprintf("%s_%s_%d.json", walletID, chain, index))
+
+	if _, err := os.Stat(accountPath); os.IsNotExist(err) {
+		return fmt.Errorf("account not found for %s on %s at index %d", walletID, chain, index)
+	}
+
+	if err := os.Remove(accountPath); err != nil {
+		return fmt.Errorf("failed to delete account: %w", err)
+	}
+
+	return nil
+}
+
+// removeFromIndex removes a wallet ID from the index
+func (s *Store) removeFromIndex(walletID string) error {
+	indexPath := filepath.Join(s.baseDir, "index.json")
+
+	var walletIDs []string
+	if data, err := os.ReadFile(indexPath); err == nil {
+		_ = json.Unmarshal(data, &walletIDs)
+	}
+
+	// Remove the wallet ID
+	newIDs := make([]string, 0, len(walletIDs))
+	for _, id := range walletIDs {
+		if id != walletID {
+			newIDs = append(newIDs, id)
+		}
+	}
+
+	data, err := json.MarshalIndent(newIDs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal index: %w", err)
+	}
+
+	if err := os.WriteFile(indexPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write index: %w", err)
+	}
+
+	return nil
+}

@@ -81,6 +81,8 @@ func main() {
 	r.Get("/wallet/{id}", server.handleGetWallet)
 	r.Get("/wallet/{id}/address", server.handleGetAddress)
 	r.Post("/wallet/{id}/address", server.handleCreateAddress)
+	r.Delete("/wallet/{id}", server.handleDeleteWallet)
+	r.Delete("/wallet/{id}/address/{index}", server.handleDeleteAddress)
 	r.Get("/wallet/{id}/balance", server.handleGetBalance)
 	r.Post("/wallet/{id}/send", server.handleSendTx)
 
@@ -151,7 +153,8 @@ func (s *Server) handleListWallets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var wallets []wallet.WalletInfoResponse
+	// Initialize as empty slice to avoid null JSON
+	wallets := make([]wallet.WalletInfoResponse, 0)
 	for _, id := range walletIDs {
 		w, err := s.walletStore.GetWallet(id)
 		if err != nil {
@@ -263,6 +266,77 @@ func (s *Server) handleCreateAddress(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusCreated, wallet.CreateAddressResponse{
 		WalletID: walletID,
 		Account:  *account,
+	})
+}
+
+func (s *Server) handleDeleteWallet(w http.ResponseWriter, r *http.Request) {
+	walletID := chi.URLParam(r, "id")
+
+	// Verify wallet exists
+	_, err := s.walletStore.GetWallet(walletID)
+	if err != nil {
+		sendError(w, http.StatusNotFound, fmt.Sprintf("Wallet not found: %v", err))
+		return
+	}
+
+	// Remove signer from memory
+	delete(s.ecdsaSigners, walletID)
+
+	// Delete wallet and all accounts
+	if err := s.walletStore.DeleteWallet(walletID); err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete wallet: %v", err))
+		return
+	}
+
+	log.Printf("Deleted wallet %s", walletID)
+
+	sendJSON(w, http.StatusOK, wallet.DeleteWalletResponse{
+		WalletID: walletID,
+		Deleted:  true,
+		Message:  "Wallet and all associated accounts deleted",
+	})
+}
+
+func (s *Server) handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
+	walletID := chi.URLParam(r, "id")
+	indexStr := chi.URLParam(r, "index")
+
+	// Parse index
+	var index uint32
+	if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid index parameter")
+		return
+	}
+
+	// Verify wallet exists
+	_, err := s.walletStore.GetWallet(walletID)
+	if err != nil {
+		sendError(w, http.StatusNotFound, fmt.Sprintf("Wallet not found: %v", err))
+		return
+	}
+
+	// Remove signer from memory
+	signerKey := fmt.Sprintf("%s_ethereum_%d", walletID, index)
+	delete(s.ecdsaSigners, signerKey)
+
+	// Delete account
+	if err := s.walletStore.DeleteAccount(walletID, "ethereum", index); err != nil {
+		if err.Error() == fmt.Sprintf("account not found for %s on ethereum at index %d", walletID, index) {
+			sendError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete account: %v", err))
+		return
+	}
+
+	log.Printf("Deleted address at index %d for wallet %s", index, walletID)
+
+	sendJSON(w, http.StatusOK, wallet.DeleteAccountResponse{
+		WalletID: walletID,
+		Chain:    "ethereum",
+		Index:    index,
+		Deleted:  true,
+		Message:  "Address deleted",
 	})
 }
 
