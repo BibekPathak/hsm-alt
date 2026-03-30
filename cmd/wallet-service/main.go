@@ -22,12 +22,15 @@ const (
 	defaultPort = "8080"
 	defaultRPC  = "https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161" // Public Sepolia RPC
 	chainID     = 11155111                                                        // Sepolia
+	defaultPass = "hsm-default-password"                                          // Default password for key encryption
 )
 
 type Server struct {
 	walletStore  *wallet.Store
+	keyStore     *wallet.KeyStore
 	txService    *transaction.Service
 	ecdsaSigners map[string]*signer.ECDSASigner // wallet_id -> signer
+	password     string                         // Default encryption password
 }
 
 func main() {
@@ -46,10 +49,21 @@ func main() {
 		storageDir = "~/.hsm/wallets"
 	}
 
+	password := os.Getenv("ENCRYPTION_PASSWORD")
+	if password == "" {
+		password = defaultPass
+	}
+
 	// Initialize wallet store
 	walletStore, err := wallet.NewStore(storageDir)
 	if err != nil {
 		log.Fatalf("Failed to initialize wallet store: %v", err)
+	}
+
+	// Initialize key store for encrypted private key storage
+	keyStore, err := wallet.NewKeyStore(storageDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize key store: %v", err)
 	}
 
 	// Initialize transaction service
@@ -63,8 +77,10 @@ func main() {
 	// Initialize server
 	server := &Server{
 		walletStore:  walletStore,
+		keyStore:     keyStore,
 		txService:    txService,
 		ecdsaSigners: make(map[string]*signer.ECDSASigner),
+		password:     password,
 	}
 
 	// Create router
@@ -133,6 +149,11 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	if err := s.walletStore.SaveAccount(account); err != nil {
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save account: %v", err))
 		return
+	}
+
+	// Save encrypted private key to disk
+	if err := s.keyStore.SaveKey(newWallet.ID, "ethereum", 0, account.Address, ecdsaSigner.PrivateKeyHex(), s.password); err != nil {
+		log.Printf("Warning: Failed to save private key: %v", err)
 	}
 
 	// Return response
@@ -261,6 +282,11 @@ func (s *Server) handleCreateAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Save encrypted private key to disk
+	if err := s.keyStore.SaveKey(walletID, req.Chain, nextIndex, account.Address, ecdsaSigner.PrivateKeyHex(), s.password); err != nil {
+		log.Printf("Warning: Failed to save private key: %v", err)
+	}
+
 	log.Printf("Created address %s for wallet %s (index %d)", account.Address, walletID, nextIndex)
 
 	sendJSON(w, http.StatusCreated, wallet.CreateAddressResponse{
@@ -380,8 +406,23 @@ func (s *Server) handleSendTx(w http.ResponseWriter, r *http.Request) {
 	// Get signer for wallet
 	ecdsaSigner, exists := s.ecdsaSigners[walletID]
 	if !exists {
-		sendError(w, http.StatusNotFound, "Wallet not found or not loaded")
-		return
+		// Try to load from key store
+		address, privateKeyHex, err := s.keyStore.LoadKey(walletID, "ethereum", 0, s.password)
+		if err != nil {
+			sendError(w, http.StatusNotFound, "Wallet not found or key not available")
+			return
+		}
+
+		// Recreate signer from private key
+		ecdsaSigner, err = signer.NewECDSASignerFromHex(privateKeyHex)
+		if err != nil {
+			sendError(w, http.StatusInternalServerError, "Failed to load signing key")
+			return
+		}
+
+		// Store in memory for future use
+		s.ecdsaSigners[walletID] = ecdsaSigner
+		_ = address // Just used for verification
 	}
 
 	// Parse value from ETH to wei

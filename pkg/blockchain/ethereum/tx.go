@@ -3,6 +3,7 @@ package ethereum
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -100,7 +101,7 @@ func (b *TxBuilder) EstimateGas(ctx context.Context, from, to string, value *big
 	}
 
 	var gasHex string
-	if err := result.UnmarshalJSON([]byte(gasHex)); err != nil {
+	if err := json.Unmarshal(result, &gasHex); err != nil {
 		return 21000, nil // Default gas limit for ETH transfer
 	}
 
