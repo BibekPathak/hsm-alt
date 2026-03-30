@@ -12,6 +12,23 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"golang.org/x/crypto/argon2"
+)
+
+// Key version constants
+const (
+	KeyVersionV1 = 1 // SHA-256 (legacy)
+	KeyVersionV2 = 2 // Argon2id
+)
+
+// Argon2 defaults
+const (
+	Argon2Time        = uint32(3)
+	Argon2MemoryKB    = uint32(65536) // 64MB
+	Argon2Parallelism = uint8(4)
+	Argon2KeyLength   = uint32(32)
+	Argon2SaltLength  = 16
 )
 
 // KeyStore manages encrypted private key storage
@@ -20,13 +37,30 @@ type KeyStore struct {
 	mu      sync.RWMutex
 }
 
-// StoredKey represents an encrypted private key
+// StoredKey represents an encrypted private key (legacy version 1)
 type StoredKey struct {
+	Version  int    `json:"version,omitempty"` // 1 or absent for legacy
+	KDF      string `json:"kdf,omitempty"`     // "sha256" or absent for legacy
 	WalletID string `json:"wallet_id"`
 	Chain    string `json:"chain"`
 	Index    uint32 `json:"index"`
 	Address  string `json:"address"`
 	KeyHex   string `json:"key_hex"` // Encrypted private key
+}
+
+// StoredKeyV2 represents an encrypted private key with Argon2id
+type StoredKeyV2 struct {
+	Version     int    `json:"version"` // 2
+	KDF         string `json:"kdf"`     // "argon2id"
+	WalletID    string `json:"wallet_id"`
+	Chain       string `json:"chain"`
+	Index       uint32 `json:"index"`
+	Address     string `json:"address"`
+	TimeCost    uint32 `json:"time"`        // Argon2 time parameter
+	MemoryCost  uint32 `json:"memory_kb"`   // Argon2 memory parameter
+	Parallelism uint8  `json:"parallelism"` // Argon2 parallelism parameter
+	Salt        string `json:"salt"`        // hex-encoded salt
+	KeyHex      string `json:"key_hex"`     // Encrypted private key
 }
 
 // NewKeyStore creates a new key store
@@ -39,23 +73,50 @@ func NewKeyStore(baseDir string) (*KeyStore, error) {
 	return &KeyStore{baseDir: keyDir}, nil
 }
 
-// SaveKey saves an encrypted private key
+// SaveKey saves an encrypted private key using Argon2id
 func (ks *KeyStore) SaveKey(walletID, chain string, index uint32, address string, privateKeyHex string, password string) error {
+	return ks.SaveKeyV2(walletID, chain, index, address, privateKeyHex, password)
+}
+
+// SaveKeyV2 saves an encrypted private key using Argon2id (new format)
+func (ks *KeyStore) SaveKeyV2(walletID, chain string, index uint32, address string, privateKeyHex string, password string) error {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	// Encrypt the private key
-	encrypted, err := encryptKey(privateKeyHex, password)
+	// Generate random salt
+	salt := make([]byte, Argon2SaltLength)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	// Derive key using Argon2id
+	derivedKey := argon2.IDKey(
+		[]byte(password),
+		salt,
+		Argon2Time,
+		Argon2MemoryKB,
+		Argon2Parallelism,
+		Argon2KeyLength,
+	)
+
+	// Encrypt with AES-GCM
+	encrypted, err := encryptWithKey(derivedKey, []byte(privateKeyHex))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt key: %w", err)
 	}
 
-	stored := StoredKey{
-		WalletID: walletID,
-		Chain:    chain,
-		Index:    index,
-		Address:  address,
-		KeyHex:   encrypted,
+	stored := StoredKeyV2{
+		Version:     KeyVersionV2,
+		KDF:         "argon2id",
+		WalletID:    walletID,
+		Chain:       chain,
+		Index:       index,
+		Address:     address,
+		TimeCost:    Argon2Time,
+		MemoryCost:  Argon2MemoryKB,
+		Parallelism: Argon2Parallelism,
+		Salt:        hex.EncodeToString(salt),
+		KeyHex:      hex.EncodeToString(encrypted),
 	}
 
 	data, err := json.MarshalIndent(stored, "", "  ")
@@ -71,13 +132,13 @@ func (ks *KeyStore) SaveKey(walletID, chain string, index uint32, address string
 	return nil
 }
 
-// LoadKey loads and decrypts a private key
+// LoadKey loads and decrypts a private key, with lazy migration from SHA-256 to Argon2id
 func (ks *KeyStore) LoadKey(walletID, chain string, index uint32, password string) (string, string, error) {
 	ks.mu.RLock()
-	defer ks.mu.RUnlock()
-
 	keyPath := ks.keyPath(walletID, chain, index)
 	data, err := os.ReadFile(keyPath)
+	ks.mu.RUnlock()
+
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", "", fmt.Errorf("key not found")
@@ -85,22 +146,62 @@ func (ks *KeyStore) LoadKey(walletID, chain string, index uint32, password strin
 		return "", "", fmt.Errorf("failed to read key: %w", err)
 	}
 
-	var stored StoredKey
-	if err := json.Unmarshal(data, &stored); err != nil {
-		return "", "", fmt.Errorf("failed to unmarshal key: %w", err)
+	// Try to detect version
+	var versionCheck struct {
+		Version int    `json:"version"`
+		KDF     string `json:"kdf"`
+	}
+	if err := json.Unmarshal(data, &versionCheck); err != nil {
+		return "", "", fmt.Errorf("failed to parse key metadata: %w", err)
 	}
 
-	// Decrypt the private key
-	privateKeyHex, err := decryptKey(stored.KeyHex, password)
+	var address, privateKeyHex string
+	var needsMigration bool
+
+	switch {
+	case versionCheck.Version == KeyVersionV2 && versionCheck.KDF == "argon2id":
+		// New Argon2id format
+		var stored StoredKeyV2
+		if err := json.Unmarshal(data, &stored); err != nil {
+			return "", "", fmt.Errorf("failed to unmarshal key: %w", err)
+		}
+		address = stored.Address
+		privateKeyHex, err = decryptKeyV2(&stored, password)
+
+	case versionCheck.Version == KeyVersionV1 || versionCheck.KDF == "sha256" || (versionCheck.Version == 0 && versionCheck.KDF == ""):
+		// Legacy SHA-256 format
+		var stored StoredKey
+		if err := json.Unmarshal(data, &stored); err != nil {
+			return "", "", fmt.Errorf("failed to unmarshal key: %w", err)
+		}
+		address = stored.Address
+		privateKeyHex, err = decryptKeyV1(stored.KeyHex, password)
+		if err == nil {
+			needsMigration = true
+		}
+
+	default:
+		return "", "", fmt.Errorf("unknown key version: %d", versionCheck.Version)
+	}
+
 	if err != nil {
 		return "", "", fmt.Errorf("failed to decrypt key: %w", err)
 	}
 
-	return stored.Address, privateKeyHex, nil
+	// Lazy migration: re-encrypt with Argon2id
+	if needsMigration {
+		go func() {
+			if migrateErr := ks.SaveKeyV2(walletID, chain, index, address, privateKeyHex, password); migrateErr == nil {
+				fmt.Printf("Migrated key %s_%s_%d from SHA-256 to Argon2id\n", walletID, chain, index)
+			}
+		}()
+	}
+
+	return address, privateKeyHex, nil
 }
 
 // ListKeys lists all stored keys for a wallet
-func (ks *KeyStore) ListKeys(walletID string) ([]StoredKey, error) {
+func (ks *KeyStore) ListKeys(walletID string) ([]StoredKeyV2, error) {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
 
@@ -110,7 +211,7 @@ func (ks *KeyStore) ListKeys(walletID string) ([]StoredKey, error) {
 	}
 
 	prefix := walletID + "_"
-	var keys []StoredKey
+	var keys []StoredKeyV2
 
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
@@ -126,7 +227,7 @@ func (ks *KeyStore) ListKeys(walletID string) ([]StoredKey, error) {
 			continue
 		}
 
-		var stored StoredKey
+		var stored StoredKeyV2
 		if err := json.Unmarshal(data, &stored); err != nil {
 			continue
 		}
@@ -158,68 +259,70 @@ func (ks *KeyStore) keyPath(walletID, chain string, index uint32) string {
 	return filepath.Join(ks.baseDir, fmt.Sprintf("%s_%s_%d.json", walletID, chain, index))
 }
 
-// encryptKey encrypts a private key hex string with AES-GCM
-func encryptKey(privateKeyHex, password string) (string, error) {
-	// Derive key from password
-	key := deriveKey(password)
-
-	// Create AES cipher
+// encryptWithKey encrypts data using AES-GCM with a pre-derived key
+func encryptWithKey(key, plaintext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Create GCM
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Generate nonce
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Encrypt
-	ciphertext := gcm.Seal(nonce, nonce, []byte(privateKeyHex), nil)
-
-	return hex.EncodeToString(ciphertext), nil
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-// decryptKey decrypts an encrypted private key hex string
-func decryptKey(encryptedHex, password string) (string, error) {
-	// Decode hex
-	ciphertext, err := hex.DecodeString(encryptedHex)
-	if err != nil {
-		return "", fmt.Errorf("invalid hex: %w", err)
-	}
-
-	// Derive key from password
-	key := deriveKey(password)
-
-	// Create AES cipher
+// decryptWithKey decrypts data using AES-GCM with a pre-derived key
+func decryptWithKey(key, ciphertext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Create GCM
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Extract nonce
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
-		return "", fmt.Errorf("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short")
 	}
 
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
+}
 
-	// Decrypt
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+// decryptKeyV2 decrypts a private key using Argon2id (new format)
+func decryptKeyV2(stored *StoredKeyV2, password string) (string, error) {
+	salt, err := hex.DecodeString(stored.Salt)
+	if err != nil {
+		return "", fmt.Errorf("invalid salt: %w", err)
+	}
+
+	ciphertext, err := hex.DecodeString(stored.KeyHex)
+	if err != nil {
+		return "", fmt.Errorf("invalid ciphertext: %w", err)
+	}
+
+	// Derive key using Argon2id with stored parameters
+	derivedKey := argon2.IDKey(
+		[]byte(password),
+		salt,
+		stored.TimeCost,
+		stored.MemoryCost,
+		stored.Parallelism,
+		Argon2KeyLength,
+	)
+
+	plaintext, err := decryptWithKey(derivedKey, ciphertext)
 	if err != nil {
 		return "", fmt.Errorf("decryption failed: %w", err)
 	}
@@ -227,8 +330,24 @@ func decryptKey(encryptedHex, password string) (string, error) {
 	return string(plaintext), nil
 }
 
-// deriveKey derives a 32-byte key from a password using SHA-256
-func deriveKey(password string) []byte {
+// decryptKeyV1 decrypts a private key using SHA-256 (legacy format)
+func decryptKeyV1(encryptedHex, password string) (string, error) {
+	ciphertext, err := hex.DecodeString(encryptedHex)
+	if err != nil {
+		return "", fmt.Errorf("invalid hex: %w", err)
+	}
+
+	key := deriveKeySHA256(password)
+	plaintext, err := decryptWithKey(key, ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("decryption failed: %w", err)
+	}
+
+	return string(plaintext), nil
+}
+
+// deriveKeySHA256 derives a 32-byte key from a password using SHA-256 (legacy)
+func deriveKeySHA256(password string) []byte {
 	hash := sha256.Sum256([]byte(password))
 	return hash[:]
 }

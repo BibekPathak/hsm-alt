@@ -100,6 +100,27 @@ func (s *ECDSASigner) PrivateKeyHex() string {
 	return hex.EncodeToString(crypto.FromECDSA(s.privateKey))
 }
 
+// Zeroize securely clears the private key from memory
+// After calling this, the signer should not be used for signing
+func (s *ECDSASigner) Zeroize() {
+	if s.privateKey == nil {
+		return
+	}
+	// Overwrite private key bytes with zeros
+	if s.privateKey.D != nil {
+		for i := range s.privateKey.D.Bits() {
+			s.privateKey.D.Bits()[i] = 0
+		}
+	}
+	s.privateKey = nil
+	s.publicKey = nil
+}
+
+// IsZeroized returns true if the private key has been cleared
+func (s *ECDSASigner) IsZeroized() bool {
+	return s.privateKey == nil
+}
+
 // SignTransaction signs a pre-hashed transaction
 func (s *ECDSASigner) SignTransaction(txHash []byte) ([]byte, []byte, error) {
 	sig, err := crypto.Sign(txHash, s.privateKey)
