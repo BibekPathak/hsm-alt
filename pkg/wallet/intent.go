@@ -15,13 +15,16 @@ import (
 type IntentStatus string
 
 const (
-	IntentStatusDraft    IntentStatus = "draft"
-	IntentStatusPending  IntentStatus = "pending"
-	IntentStatusApproved IntentStatus = "approved"
-	IntentStatusSigned   IntentStatus = "signed"
-	IntentStatusSent     IntentStatus = "sent"
-	IntentStatusFailed   IntentStatus = "failed"
-	IntentStatusRejected IntentStatus = "rejected"
+	IntentStatusDraft         IntentStatus = "draft"
+	IntentStatusPending       IntentStatus = "pending"
+	IntentStatusApproved      IntentStatus = "approved"
+	IntentStatusExecuting     IntentStatus = "executing"
+	IntentStatusSigned        IntentStatus = "signed"
+	IntentStatusSent          IntentStatus = "sent"
+	IntentStatusFailed        IntentStatus = "failed"
+	IntentStatusPermanentFail IntentStatus = "permanent_fail"
+	IntentStatusRejected      IntentStatus = "rejected"
+	IntentStatusExpired       IntentStatus = "expired"
 )
 
 // TransactionIntent represents an intent to send a transaction
@@ -39,10 +42,13 @@ type TransactionIntent struct {
 	Status       IntentStatus `json:"status"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
+	ExpiresAt    time.Time    `json:"expires_at,omitempty"`
 	ApprovedBy   []string     `json:"approved_by,omitempty"`
 	RequiredSigs int          `json:"required_sigs"`
 	TxHash       string       `json:"tx_hash,omitempty"`
 	Error        string       `json:"error,omitempty"`
+	RetryCount   int          `json:"retry_count"`
+	MaxRetries   int          `json:"max_retries"`
 }
 
 // IntentStore manages transaction intents for audit trail and draft approvals
@@ -62,9 +68,18 @@ func NewIntentStore(baseDir string) (*IntentStore, error) {
 }
 
 // CreateIntent creates a new transaction intent
-func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH string, gasLimit uint64, requiredSigs int) (*TransactionIntent, error) {
+func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH string, gasLimit uint64, requiredSigs int, expiryHours int, maxRetries int) (*TransactionIntent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if expiryHours <= 0 {
+		expiryHours = 24 // Default 24 hours
+	}
+	if maxRetries <= 0 {
+		maxRetries = 3 // Default 3 retries
+	}
+
+	expiresAt := time.Now().Add(time.Duration(expiryHours) * time.Hour)
 
 	intent := &TransactionIntent{
 		ID:           uuid.New().String(),
@@ -78,7 +93,10 @@ func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH st
 		Status:       IntentStatusDraft,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
+		ExpiresAt:    expiresAt,
 		RequiredSigs: requiredSigs,
+		MaxRetries:   maxRetries,
+		RetryCount:   0,
 	}
 
 	if err := s.saveIntent(intent); err != nil {
@@ -225,6 +243,139 @@ func (s *IntentStore) GetPendingIntents() ([]TransactionIntent, error) {
 		}
 
 		if intent.Status == IntentStatusDraft || intent.Status == IntentStatusPending {
+			intents = append(intents, intent)
+		}
+	}
+
+	return intents, nil
+}
+
+// RetryIntent increments retry count and resets status for failed intents
+// Returns error if intent cannot be retried (not failed, or max retries exceeded)
+func (s *IntentStore) RetryIntent(id string) (*TransactionIntent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	intent, err := s.getIntentUnsafe(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if intent.Status != IntentStatusFailed && intent.Status != IntentStatusPermanentFail {
+		return nil, fmt.Errorf("intent cannot be retried in status: %s", intent.Status)
+	}
+
+	// Check if max retries exceeded
+	if intent.RetryCount >= intent.MaxRetries {
+		return nil, fmt.Errorf("max retries (%d) exceeded for intent", intent.MaxRetries)
+	}
+
+	// Increment retry count
+	intent.RetryCount++
+	intent.UpdatedAt = time.Now()
+
+	// Reset to approved status for re-execution
+	// If multi-sig, go back to draft to require re-approval
+	if intent.RequiredSigs > 1 {
+		intent.Status = IntentStatusDraft
+	} else {
+		intent.Status = IntentStatusApproved
+	}
+
+	// Clear previous error
+	intent.Error = ""
+
+	if err := s.saveIntent(intent); err != nil {
+		return nil, fmt.Errorf("failed to save intent: %w", err)
+	}
+
+	return intent, nil
+}
+
+// ExpireIntents expires draft/approved intents that have passed their expiry time
+// Returns count of expired intents
+func (s *IntentStore) ExpireIntents() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read intent dir: %w", err)
+	}
+
+	now := time.Now()
+	expiredCount := 0
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		var intent TransactionIntent
+		if err := json.Unmarshal(data, &intent); err != nil {
+			continue
+		}
+
+		// Only expire draft or approved intents
+		if intent.Status != IntentStatusDraft && intent.Status != IntentStatusPending && intent.Status != IntentStatusApproved {
+			continue
+		}
+
+		// Check if expired
+		if !intent.ExpiresAt.IsZero() && now.After(intent.ExpiresAt) {
+			intent.Status = IntentStatusExpired
+			intent.UpdatedAt = now
+			intent.Error = "Intent expired due to timeout"
+
+			if err := s.saveIntent(&intent); err == nil {
+				expiredCount++
+			}
+		}
+	}
+
+	return expiredCount, nil
+}
+
+// GetExpirableIntents returns intents that can be expired
+func (s *IntentStore) GetExpirableIntents() ([]TransactionIntent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read intent dir: %w", err)
+	}
+
+	now := time.Now()
+	var intents []TransactionIntent
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		var intent TransactionIntent
+		if err := json.Unmarshal(data, &intent); err != nil {
+			continue
+		}
+
+		// Only include draft, pending, or approved
+		if intent.Status != IntentStatusDraft && intent.Status != IntentStatusPending && intent.Status != IntentStatusApproved {
+			continue
+		}
+
+		// Check if expired
+		if !intent.ExpiresAt.IsZero() && now.After(intent.ExpiresAt) {
 			intents = append(intents, intent)
 		}
 	}

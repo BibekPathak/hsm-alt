@@ -8,6 +8,8 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,12 +27,22 @@ const (
 	defaultPass = "hsm-default-password"                                          // Default password for key encryption
 )
 
+const (
+	defaultIntentExpiryHours = 24
+	defaultMaxRetries        = 3
+	defaultLockTimeout       = 30 * time.Second
+)
+
 type Server struct {
-	walletStore *wallet.Store
-	keyStore    *wallet.KeyStore
-	intentStore *wallet.IntentStore
-	txService   *transaction.Service
-	password    string // Default encryption password
+	walletStore       *wallet.Store
+	keyStore          *wallet.KeyStore
+	intentStore       *wallet.IntentStore
+	txService         *transaction.Service
+	password          string
+	intentExpiryHours int
+	maxRetries        int
+	lockTimeout       time.Duration
+	walletLocks       sync.Map // map of "walletID_chain" -> struct{}
 }
 
 func main() {
@@ -52,6 +64,22 @@ func main() {
 	password := os.Getenv("ENCRYPTION_PASSWORD")
 	if password == "" {
 		password = defaultPass
+	}
+
+	// Configurable intent expiry hours
+	intentExpiryHours := defaultIntentExpiryHours
+	if expiryStr := os.Getenv("INTENT_EXPIRY_HOURS"); expiryStr != "" {
+		if expiry, err := strconv.Atoi(expiryStr); err == nil && expiry > 0 {
+			intentExpiryHours = expiry
+		}
+	}
+
+	// Configurable max retries
+	maxRetries := defaultMaxRetries
+	if retriesStr := os.Getenv("INTENT_MAX_RETRIES"); retriesStr != "" {
+		if retries, err := strconv.Atoi(retriesStr); err == nil && retries > 0 {
+			maxRetries = retries
+		}
 	}
 
 	// Initialize wallet store
@@ -82,11 +110,14 @@ func main() {
 
 	// Initialize server
 	server := &Server{
-		walletStore: walletStore,
-		keyStore:    keyStore,
-		intentStore: intentStore,
-		txService:   txService,
-		password:    password,
+		walletStore:       walletStore,
+		keyStore:          keyStore,
+		intentStore:       intentStore,
+		txService:         txService,
+		password:          password,
+		intentExpiryHours: intentExpiryHours,
+		maxRetries:        maxRetries,
+		lockTimeout:       defaultLockTimeout,
 	}
 
 	// Create router
@@ -114,7 +145,11 @@ func main() {
 	r.Get("/intent/{id}", server.handleGetIntent)
 	r.Post("/intent/{id}/approve", server.handleApproveIntent)
 	r.Post("/intent/{id}/reject", server.handleRejectIntent)
+	r.Post("/intent/{id}/retry", server.handleRetryIntent)
 	r.Post("/intent/{id}/execute", server.handleExecuteIntent)
+
+	// Start background expiry job
+	go server.runExpiryJob()
 
 	log.Printf("Wallet Service starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
@@ -504,6 +539,8 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		"",
 		req.GasLimit,
 		req.RequiredSigs,
+		s.intentExpiryHours,
+		s.maxRetries,
 	)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create intent: %v", err))
@@ -628,20 +665,56 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency check - reject if already executing or sent
+	if intent.Status == wallet.IntentStatusExecuting {
+		sendError(w, http.StatusConflict, "Intent is already being executed")
+		return
+	}
+	if intent.Status == wallet.IntentStatusSent {
+		sendError(w, http.StatusConflict, fmt.Sprintf("Intent already executed with tx: %s", intent.TxHash))
+		return
+	}
+
 	if intent.Status != wallet.IntentStatusApproved {
 		sendError(w, http.StatusBadRequest, "Intent not approved")
+		return
+	}
+
+	// Acquire per-wallet lock (walletID + chain)
+	lockKey := intent.WalletID + "_" + intent.Chain
+	lockAcquired := make(chan struct{})
+
+	go func() {
+		s.walletLocks.LoadOrStore(lockKey, struct{}{})
+		close(lockAcquired)
+	}()
+
+	select {
+	case <-lockAcquired:
+		// Lock acquired
+	case <-time.After(s.lockTimeout):
+		sendError(w, http.StatusLocked, "Wallet is busy, try again later")
+		return
+	}
+	defer s.walletLocks.Delete(lockKey)
+
+	// Set status to executing (idempotency)
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
+		sendError(w, http.StatusInternalServerError, "Failed to update intent status")
 		return
 	}
 
 	// Load key and sign
 	_, privateKeyHex, err := s.keyStore.LoadKey(intent.WalletID, intent.Chain, 0, s.password)
 	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
 		sendError(w, http.StatusInternalServerError, "Failed to load key")
 		return
 	}
 
 	ecdsaSigner, err := signer.NewECDSASignerFromHex(privateKeyHex)
 	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
 		sendError(w, http.StatusInternalServerError, "Failed to create signer")
 		return
 	}
@@ -655,12 +728,21 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	ethValue.Int(weiValue)
 
 	// Send transaction
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), s.lockTimeout)
 	defer cancel()
 
 	txHash, err := s.txService.SendTransaction(ctx, intent.Chain, intent.To, weiValue, ecdsaSigner)
 	if err != nil {
-		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		// Increment retry count on failure
+		failedIntent, _ := s.intentStore.GetIntent(intentID)
+		if failedIntent != nil {
+			failedIntent.RetryCount++
+			if failedIntent.RetryCount >= failedIntent.MaxRetries {
+				s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusPermanentFail, "", err.Error())
+			} else {
+				s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+			}
+		}
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
 		return
 	}
@@ -673,6 +755,52 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 		"tx_hash":   txHash,
 		"intent_id": intentID,
 	})
+}
+
+func (s *Server) handleRetryIntent(w http.ResponseWriter, r *http.Request) {
+	intentID := chi.URLParam(r, "id")
+
+	intent, err := s.intentStore.GetIntent(intentID)
+	if err != nil {
+		sendError(w, http.StatusNotFound, fmt.Sprintf("Intent not found: %v", err))
+		return
+	}
+
+	// Only failed or permanent_fail can be retried
+	if intent.Status != wallet.IntentStatusFailed && intent.Status != wallet.IntentStatusPermanentFail {
+		sendError(w, http.StatusBadRequest, fmt.Sprintf("Cannot retry intent in status: %s", intent.Status))
+		return
+	}
+
+	// Check max retries
+	if intent.RetryCount >= intent.MaxRetries {
+		sendError(w, http.StatusBadRequest, fmt.Sprintf("Max retries (%d) already exceeded", intent.MaxRetries))
+		return
+	}
+
+	// Retry the intent
+	updatedIntent, err := s.intentStore.RetryIntent(intentID)
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to retry intent: %v", err))
+		return
+	}
+
+	log.Printf("Retried intent %s (attempt %d/%d)", intentID, updatedIntent.RetryCount, updatedIntent.MaxRetries)
+	sendJSON(w, http.StatusOK, updatedIntent)
+}
+
+func (s *Server) runExpiryJob() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		count, err := s.intentStore.ExpireIntents()
+		if err != nil {
+			log.Printf("Expiry job error: %v", err)
+		} else if count > 0 {
+			log.Printf("Expired %d intents", count)
+		}
+	}
 }
 
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
