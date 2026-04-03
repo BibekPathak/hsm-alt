@@ -106,14 +106,14 @@ func main() {
 	r.Delete("/wallet/{id}", server.handleDeleteWallet)
 	r.Delete("/wallet/{id}/address/{index}", server.handleDeleteAddress)
 	r.Get("/wallet/{id}/balance", server.handleGetBalance)
-	r.Post("/wallet/{id}/send", server.handleSendTx)
 	r.Get("/wallet/{id}/summary", server.handleWalletSummary)
 
-	// Intent routes
+	// Intent routes - ALL transactions go through intent flow
 	r.Post("/intent", server.handleCreateIntent)
 	r.Get("/intent", server.handleListIntents)
 	r.Get("/intent/{id}", server.handleGetIntent)
 	r.Post("/intent/{id}/approve", server.handleApproveIntent)
+	r.Post("/intent/{id}/reject", server.handleRejectIntent)
 	r.Post("/intent/{id}/execute", server.handleExecuteIntent)
 
 	log.Printf("Wallet Service starting on port %s", port)
@@ -400,70 +400,6 @@ func (s *Server) handleGetBalance(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleSendTx(w http.ResponseWriter, r *http.Request) {
-	walletID := chi.URLParam(r, "id")
-
-	var req wallet.SendTxRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		sendError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	// Load key from keystore and sign immediately, then zeroize
-	// This is the "sign-and-forget" pattern - private key never stays in memory
-	address, privateKeyHex, err := s.keyStore.LoadKey(walletID, "ethereum", 0, s.password)
-	if err != nil {
-		sendError(w, http.StatusNotFound, "Wallet not found or key not available")
-		return
-	}
-
-	// Create signer for this operation
-	ecdsaSigner, err := signer.NewECDSASignerFromHex(privateKeyHex)
-	if err != nil {
-		sendError(w, http.StatusInternalServerError, "Failed to load signing key")
-		return
-	}
-
-	// Verify address matches
-	if ecdsaSigner.EthereumAddress() != address {
-		sendError(w, http.StatusInternalServerError, "Address mismatch")
-		return
-	}
-
-	// Zeroize the private key immediately after creating signer
-	// Note: go-ethereum's ecdsa.PrivateKey uses big.Int internally
-	// For extra security, we keep the signer but ensure it's zeroized after use
-	defer ecdsaSigner.Zeroize()
-
-	// Parse value from ETH to wei
-	ethValue := new(big.Float)
-	if _, ok := ethValue.SetString(req.Value); !ok {
-		sendError(w, http.StatusBadRequest, "Invalid value format")
-		return
-	}
-
-	weiValue := new(big.Int)
-	ethValue.Mul(ethValue, new(big.Float).SetInt(big.NewInt(1e18)))
-	ethValue.Int(weiValue)
-
-	// Send transaction
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	txHash, err := s.txService.SendTransaction(ctx, "ethereum", req.To, weiValue, ecdsaSigner)
-	if err != nil {
-		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
-		return
-	}
-
-	log.Printf("Sent tx %s from wallet %s to %s for %s ETH", txHash, walletID, req.To, req.Value)
-
-	sendJSON(w, http.StatusOK, wallet.SendTxResponse{
-		TxHash: txHash,
-		Chain:  "ethereum",
-	})
-}
-
 func (s *Server) handleWalletSummary(w http.ResponseWriter, r *http.Request) {
 	walletID := chi.URLParam(r, "id")
 
@@ -524,10 +460,31 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		Value        string `json:"value"`
 		GasLimit     uint64 `json:"gas_limit"`
 		RequiredSigs int    `json:"required_sigs"`
+		Creator      string `json:"creator"` // Who created this intent
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendError(w, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+
+	// Default to ethereum chain
+	if req.Chain == "" {
+		req.Chain = "ethereum"
+	}
+
+	// Default gas limit
+	if req.GasLimit == 0 {
+		req.GasLimit = 21000
+	}
+
+	// Default required_sigs to 1 for fast path
+	if req.RequiredSigs <= 0 {
+		req.RequiredSigs = 1
+	}
+
+	// Default creator to "creator" if not specified
+	if req.Creator == "" {
+		req.Creator = "creator"
 	}
 
 	// Get wallet's address
@@ -544,7 +501,7 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		account.Address,
 		req.To,
 		req.Value,
-		"", // value_eth will be calculated
+		"",
 		req.GasLimit,
 		req.RequiredSigs,
 	)
@@ -553,7 +510,18 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Created intent %s for wallet %s", intent.ID, req.WalletID)
+	// Auto-approve if required_sigs is 1 (fast path)
+	if req.RequiredSigs == 1 {
+		if err := s.intentStore.ApproveIntent(intent.ID, req.Creator); err != nil {
+			log.Printf("Warning: Failed to auto-approve intent: %v", err)
+		} else {
+			// Reload intent to get updated status
+			intent, _ = s.intentStore.GetIntent(intent.ID)
+			log.Printf("Auto-approved intent %s (required_sigs=1)", intent.ID)
+		}
+	}
+
+	log.Printf("Created intent %s for wallet %s (required_sigs: %d)", intent.ID, req.WalletID, req.RequiredSigs)
 	sendJSON(w, http.StatusCreated, intent)
 }
 
@@ -608,6 +576,47 @@ func (s *Server) handleApproveIntent(w http.ResponseWriter, r *http.Request) {
 	intent, _ := s.intentStore.GetIntent(intentID)
 	log.Printf("Intent %s approved by %s", intentID, req.Approver)
 	sendJSON(w, http.StatusOK, intent)
+}
+
+func (s *Server) handleRejectIntent(w http.ResponseWriter, r *http.Request) {
+	intentID := chi.URLParam(r, "id")
+
+	var req struct {
+		Rejecter string `json:"rejecter"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Rejecter == "" {
+		req.Rejecter = "unknown"
+	}
+
+	intent, err := s.intentStore.GetIntent(intentID)
+	if err != nil {
+		sendError(w, http.StatusNotFound, fmt.Sprintf("Intent not found: %v", err))
+		return
+	}
+
+	// Can only reject draft or pending intents
+	if intent.Status != wallet.IntentStatusDraft && intent.Status != wallet.IntentStatusPending {
+		sendError(w, http.StatusBadRequest, "Can only reject draft or pending intents")
+		return
+	}
+
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusRejected, "", req.Reason); err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reject intent: %v", err))
+		return
+	}
+
+	log.Printf("Intent %s rejected by %s: %s", intentID, req.Rejecter, req.Reason)
+	sendJSON(w, http.StatusOK, map[string]string{
+		"intent_id": intentID,
+		"status":    string(wallet.IntentStatusRejected),
+		"reason":    req.Reason,
+	})
 }
 
 func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
