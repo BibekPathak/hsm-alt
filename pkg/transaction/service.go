@@ -10,6 +10,15 @@ import (
 	"github.com/yourorg/hsm/pkg/signer"
 )
 
+// FeeSpeed represents the fee speed preset
+type FeeSpeed string
+
+const (
+	FeeSpeedSlow     FeeSpeed = "slow"
+	FeeSpeedStandard FeeSpeed = "standard"
+	FeeSpeedFast     FeeSpeed = "fast"
+)
+
 // Service orchestrates transaction building, signing, and broadcasting
 type Service struct {
 	builders map[string]*ethereum.TxBuilder // chain -> builder
@@ -25,6 +34,44 @@ func NewService() *Service {
 // AddChain adds a blockchain adapter
 func (s *Service) AddChain(chain string, builder *ethereum.TxBuilder) {
 	s.builders[chain] = builder
+}
+
+// GetBuilder returns the builder for a chain
+func (s *Service) GetBuilder(chain string) (*ethereum.TxBuilder, bool) {
+	builder, ok := s.builders[chain]
+	return builder, ok
+}
+
+// SendTransactionEIP1559 builds, signs, and broadcasts an EIP-1559 transaction
+func (s *Service) SendTransactionEIP1559(ctx context.Context, chain string, to string, value *big.Int, ecdsaSigner *signer.ECDSASigner, speed FeeSpeed) (string, error) {
+	builder, ok := s.builders[chain]
+	if !ok {
+		return "", fmt.Errorf("unsupported chain: %s", chain)
+	}
+
+	privateKey := ecdsaSigner.GetPrivateKey()
+
+	_, rawTxHex, err := builder.BuildAndSignTxEIP1559(ctx, to, value, privateKey, ethereum.FeeSpeed(speed))
+	if err != nil {
+		return "", fmt.Errorf("failed to build/sign tx: %w", err)
+	}
+
+	txHash, err := builder.BroadcastTransaction(ctx, rawTxHex)
+	if err != nil {
+		return "", fmt.Errorf("failed to broadcast tx: %w", err)
+	}
+
+	return txHash, nil
+}
+
+// CheckBalanceSufficient checks if account has enough balance
+func (s *Service) CheckBalanceSufficient(ctx context.Context, chain string, address string, value *big.Int, gasLimit uint64) (bool, *big.Int, error) {
+	builder, ok := s.builders[chain]
+	if !ok {
+		return false, nil, fmt.Errorf("unsupported chain: %s", chain)
+	}
+
+	return builder.CheckBalanceSufficient(ctx, address, value, gasLimit)
 }
 
 // SendTransaction builds, signs, and broadcasts a transaction

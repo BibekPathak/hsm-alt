@@ -49,6 +49,7 @@ type TransactionIntent struct {
 	Error        string       `json:"error,omitempty"`
 	RetryCount   int          `json:"retry_count"`
 	MaxRetries   int          `json:"max_retries"`
+	FeeSpeed     string       `json:"fee_speed"` // slow, standard, fast
 }
 
 // IntentStore manages transaction intents for audit trail and draft approvals
@@ -68,7 +69,7 @@ func NewIntentStore(baseDir string) (*IntentStore, error) {
 }
 
 // CreateIntent creates a new transaction intent
-func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH string, gasLimit uint64, requiredSigs int, expiryHours int, maxRetries int) (*TransactionIntent, error) {
+func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH string, gasLimit uint64, requiredSigs int, expiryHours int, maxRetries int, feeSpeed string) (*TransactionIntent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -77,6 +78,9 @@ func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH st
 	}
 	if maxRetries <= 0 {
 		maxRetries = 3 // Default 3 retries
+	}
+	if feeSpeed == "" {
+		feeSpeed = "standard" // Default fee speed
 	}
 
 	expiresAt := time.Now().Add(time.Duration(expiryHours) * time.Hour)
@@ -97,6 +101,7 @@ func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH st
 		RequiredSigs: requiredSigs,
 		MaxRetries:   maxRetries,
 		RetryCount:   0,
+		FeeSpeed:     feeSpeed,
 	}
 
 	if err := s.saveIntent(intent); err != nil {
@@ -381,6 +386,183 @@ func (s *IntentStore) GetExpirableIntents() ([]TransactionIntent, error) {
 	}
 
 	return intents, nil
+}
+
+// IntentFilters holds filters for querying intents
+type IntentFilters struct {
+	WalletID  string
+	Status    IntentStatus
+	FromTime  time.Time
+	ToTime    time.Time
+	Chain     string
+	Limit     int
+	Offset    int
+	SortBy    string // "created_at", "updated_at"
+	SortOrder string // "asc", "desc"
+}
+
+// IntentStatusCounts holds count of intents by status for a wallet
+type IntentStatusCounts struct {
+	Pending   int `json:"pending"`
+	Approved  int `json:"approved"`
+	Executing int `json:"executing"`
+	Sent      int `json:"sent"`
+	Failed    int `json:"failed"`
+	Rejected  int `json:"rejected"`
+	Expired   int `json:"expired"`
+	Draft     int `json:"draft"`
+}
+
+// GetIntentStatusCounts returns count of intents grouped by status for a wallet
+func (s *IntentStore) GetIntentStatusCounts(walletID string) (*IntentStatusCounts, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read intent dir: %w", err)
+	}
+
+	counts := &IntentStatusCounts{}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		var intent TransactionIntent
+		if err := json.Unmarshal(data, &intent); err != nil {
+			continue
+		}
+
+		// Filter by wallet if specified
+		if walletID != "" && intent.WalletID != walletID {
+			continue
+		}
+
+		switch intent.Status {
+		case IntentStatusDraft:
+			counts.Draft++
+		case IntentStatusPending:
+			counts.Pending++
+		case IntentStatusApproved:
+			counts.Approved++
+		case IntentStatusExecuting:
+			counts.Executing++
+		case IntentStatusSent:
+			counts.Sent++
+		case IntentStatusFailed, IntentStatusPermanentFail:
+			counts.Failed++
+		case IntentStatusRejected:
+			counts.Rejected++
+		case IntentStatusExpired:
+			counts.Expired++
+		}
+	}
+
+	return counts, nil
+}
+
+// ListIntentsFiltered returns intents matching the given filters
+func (s *IntentStore) ListIntentsFiltered(filters IntentFilters) ([]TransactionIntent, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read intent dir: %w", err)
+	}
+
+	// Set defaults
+	if filters.Limit <= 0 {
+		filters.Limit = 50
+	}
+	if filters.SortBy == "" {
+		filters.SortBy = "created_at"
+	}
+	if filters.SortOrder == "" {
+		filters.SortOrder = "desc"
+	}
+
+	var intents []TransactionIntent
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		var intent TransactionIntent
+		if err := json.Unmarshal(data, &intent); err != nil {
+			continue
+		}
+
+		// Apply filters
+		if filters.WalletID != "" && intent.WalletID != filters.WalletID {
+			continue
+		}
+		if filters.Status != "" && intent.Status != filters.Status {
+			continue
+		}
+		if filters.Chain != "" && intent.Chain != filters.Chain {
+			continue
+		}
+		if !filters.FromTime.IsZero() && intent.CreatedAt.Before(filters.FromTime) {
+			continue
+		}
+		if !filters.ToTime.IsZero() && intent.CreatedAt.After(filters.ToTime) {
+			continue
+		}
+
+		intents = append(intents, intent)
+	}
+
+	// Sort
+	for i := 0; i < len(intents)-1; i++ {
+		for j := 0; j < len(intents)-i-1; j++ {
+			var t1, t2 time.Time
+			if filters.SortBy == "updated_at" {
+				t1 = intents[j].UpdatedAt
+				t2 = intents[j+1].UpdatedAt
+			} else {
+				t1 = intents[j].CreatedAt
+				t2 = intents[j+1].CreatedAt
+			}
+			shouldSwap := false
+			if filters.SortOrder == "asc" {
+				shouldSwap = t1.After(t2)
+			} else {
+				shouldSwap = t1.Before(t2)
+			}
+			if shouldSwap {
+				intents[j], intents[j+1] = intents[j+1], intents[j]
+			}
+		}
+	}
+
+	total := len(intents)
+
+	// Apply pagination
+	if filters.Offset > len(intents) {
+		intents = []TransactionIntent{}
+	} else {
+		end := filters.Offset + filters.Limit
+		if end > len(intents) {
+			end = len(intents)
+		}
+		intents = intents[filters.Offset:end]
+	}
+
+	return intents, total, nil
 }
 
 func (s *IntentStore) getIntentUnsafe(id string) (*TransactionIntent, error) {

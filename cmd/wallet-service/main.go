@@ -148,6 +148,9 @@ func main() {
 	r.Post("/intent/{id}/retry", server.handleRetryIntent)
 	r.Post("/intent/{id}/execute", server.handleExecuteIntent)
 
+	// Fee estimation
+	r.Get("/fee-estimate", server.handleFeeEstimate)
+
 	// Start background expiry job
 	go server.runExpiryJob()
 
@@ -479,11 +482,15 @@ func (s *Server) handleWalletSummary(w http.ResponseWriter, r *http.Request) {
 
 	totalETH := new(big.Float).Quo(new(big.Float).SetInt(&totalBalance), new(big.Float).SetInt(big.NewInt(1e18)))
 
+	// Get intent counts for this wallet
+	intentCounts, _ := s.intentStore.GetIntentStatusCounts(walletID)
+
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"wallet_id":     wal.ID,
 		"name":          wal.Name,
 		"total_balance": totalETH.Text('f', 6),
 		"addresses":     balances,
+		"intents":       intentCounts,
 	})
 }
 
@@ -495,7 +502,8 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		Value        string `json:"value"`
 		GasLimit     uint64 `json:"gas_limit"`
 		RequiredSigs int    `json:"required_sigs"`
-		Creator      string `json:"creator"` // Who created this intent
+		Creator      string `json:"creator"`   // Who created this intent
+		FeeSpeed     string `json:"fee_speed"` // slow, standard, fast
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendError(w, http.StatusBadRequest, "Invalid request body")
@@ -541,6 +549,7 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		req.RequiredSigs,
 		s.intentExpiryHours,
 		s.maxRetries,
+		req.FeeSpeed,
 	)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create intent: %v", err))
@@ -563,9 +572,43 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListIntents(w http.ResponseWriter, r *http.Request) {
-	walletID := r.URL.Query().Get("wallet_id")
+	filters := wallet.IntentFilters{
+		WalletID:  r.URL.Query().Get("wallet_id"),
+		Chain:     r.URL.Query().Get("chain"),
+		SortBy:    r.URL.Query().Get("sort"),
+		SortOrder: r.URL.Query().Get("order"),
+	}
 
-	intents, err := s.intentStore.ListIntents(walletID)
+	// Status filter
+	if status := r.URL.Query().Get("status"); status != "" {
+		filters.Status = wallet.IntentStatus(status)
+	}
+
+	// Date filters
+	if from := r.URL.Query().Get("from"); from != "" {
+		if t, err := time.Parse(time.RFC3339, from); err == nil {
+			filters.FromTime = t
+		}
+	}
+	if to := r.URL.Query().Get("to"); to != "" {
+		if t, err := time.Parse(time.RFC3339, to); err == nil {
+			filters.ToTime = t
+		}
+	}
+
+	// Pagination
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
+			filters.Limit = l
+		}
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		if o, err := strconv.Atoi(offset); err == nil && o >= 0 {
+			filters.Offset = o
+		}
+	}
+
+	intents, total, err := s.intentStore.ListIntentsFiltered(filters)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list intents: %v", err))
 		return
@@ -575,7 +618,12 @@ func (s *Server) handleListIntents(w http.ResponseWriter, r *http.Request) {
 		intents = []wallet.TransactionIntent{}
 	}
 
-	sendJSON(w, http.StatusOK, intents)
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"intents": intents,
+		"total":   total,
+		"limit":   filters.Limit,
+		"offset":  filters.Offset,
+	})
 }
 
 func (s *Server) handleGetIntent(w http.ResponseWriter, r *http.Request) {
@@ -698,6 +746,30 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.walletLocks.Delete(lockKey)
 
+	// PRE-EXECUTION BALANCE RECONCILIATION
+	// Check if account has sufficient balance for value + gas
+	ethValue := new(big.Float)
+	ethValue.SetString(intent.Value)
+	weiValue := new(big.Int)
+	ethValue.Mul(ethValue, new(big.Float).SetInt(big.NewInt(1e18)))
+	ethValue.Int(weiValue)
+
+	sufficient, required, err := s.txService.CheckBalanceSufficient(
+		context.Background(),
+		intent.Chain,
+		intent.From,
+		weiValue,
+		intent.GasLimit,
+	)
+	if err != nil {
+		log.Printf("Warning: Balance check failed: %v", err)
+		// Continue anyway - don't block on balance check failure
+	} else if !sufficient {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", fmt.Sprintf("Insufficient balance: have less than required %s wei", required.String()))
+		sendError(w, http.StatusBadRequest, fmt.Sprintf("Insufficient balance. Required: %s wei, have: check on-chain", required.String()))
+		return
+	}
+
 	// Set status to executing (idempotency)
 	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
 		sendError(w, http.StatusInternalServerError, "Failed to update intent status")
@@ -720,18 +792,19 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ecdsaSigner.Zeroize()
 
-	// Parse value
-	ethValue := new(big.Float)
-	ethValue.SetString(intent.Value)
-	weiValue := new(big.Int)
-	ethValue.Mul(ethValue, new(big.Float).SetInt(big.NewInt(1e18)))
-	ethValue.Int(weiValue)
-
 	// Send transaction
 	ctx, cancel := context.WithTimeout(r.Context(), s.lockTimeout)
 	defer cancel()
 
-	txHash, err := s.txService.SendTransaction(ctx, intent.Chain, intent.To, weiValue, ecdsaSigner)
+	// Use EIP-1559 with fee speed from intent
+	feeSpeed := transaction.FeeSpeedStandard
+	if intent.FeeSpeed == "slow" {
+		feeSpeed = transaction.FeeSpeedSlow
+	} else if intent.FeeSpeed == "fast" {
+		feeSpeed = transaction.FeeSpeedFast
+	}
+
+	txHash, err := s.txService.SendTransactionEIP1559(ctx, intent.Chain, intent.To, weiValue, ecdsaSigner, feeSpeed)
 	if err != nil {
 		// Increment retry count on failure
 		failedIntent, _ := s.intentStore.GetIntent(intentID)
@@ -806,6 +879,57 @@ func (s *Server) runExpiryJob() {
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleFeeEstimate(w http.ResponseWriter, r *http.Request) {
+	chain := r.URL.Query().Get("chain")
+	speed := r.URL.Query().Get("speed")
+
+	if chain == "" {
+		chain = "ethereum"
+	}
+	if speed == "" {
+		speed = "standard"
+	}
+
+	// Get builder for chain
+	builder, ok := s.txService.GetBuilder(chain)
+	if !ok {
+		sendError(w, http.StatusNotFound, "Chain not supported")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	feeInfo, err := builder.GetFeeInfo(ctx)
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get fee estimate: %v", err))
+		return
+	}
+
+	// Convert to gwei for readability
+	toGwei := func(wei *big.Int) string {
+		if wei == nil {
+			return "0"
+		}
+		gwei := new(big.Float).Quo(new(big.Float).SetInt(wei), new(big.Float).SetInt(big.NewInt(1e9)))
+		return gwei.Text('f', 2)
+	}
+
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"chain":            chain,
+		"type":             "eip1559",
+		"base_fee":         toGwei(feeInfo.BaseFee),
+		"priority_fee":     toGwei(feeInfo.MaxPriorityFee),
+		"max_fee":          toGwei(feeInfo.MaxFee),
+		"gas_price_legacy": toGwei(feeInfo.LegacyGasPrice),
+		"presets": map[string]string{
+			"slow":     toGwei(feeInfo.Slow),
+			"standard": toGwei(feeInfo.Standard),
+			"fast":     toGwei(feeInfo.Fast),
+		},
+	})
 }
 
 func sendError(w http.ResponseWriter, status int, message string) {
