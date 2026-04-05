@@ -1,0 +1,111 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mpc-config
+  namespace: mpc-custody
+data:
+  CLUSTER_ID: "cluster-1"
+  THRESHOLD: "3"
+  TOTAL_NODES: "5"
+  ENCLAVE_PORT: "7002"
+  NODE_PORT: "7001"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-node
+  namespace: mpc-custody
+spec:
+  serviceName: mpc-node
+  replicas: 5
+  selector:
+    matchLabels:
+      app: mpc-node
+  template:
+    metadata:
+      labels:
+        app: mpc-node
+    spec:
+      containers:
+      - name: mpc-enclave
+        image: mpc-enclave:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: THRESHOLD
+        - name: TOTAL_SHARES
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: TOTAL_NODES
+        - name: ENCLAVE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: ENCLAVE_PORT
+        ports:
+        - containerPort: 7002
+          name: enclave
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "2"
+        livenessProbe:
+          tcpSocket:
+            port: 7002
+          initialDelaySeconds: 10
+          periodSeconds: 30
+
+      - name: mpc-node
+        image: mpc-node:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CLUSTER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: CLUSTER_ID
+        - name: THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: THRESHOLD
+        - name: TOTAL_NODES
+          valueFrom:
+            configMapKeyRef:
+              name: mpc-config
+              key: TOTAL_NODES
+        - name: ENCLAVE_ADDR
+          value: "localhost:7002"
+        - name: LISTEN_ADDR
+          value: ":7001"
+        ports:
+        - containerPort: 7001
+          name: node
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "1"
+          limits:
+            memory: "2Gi"
+            cpu: "4"
+        livenessProbe:
+          tcpSocket:
+            port: 7001
+          initialDelaySeconds: 15
+          periodSeconds: 30

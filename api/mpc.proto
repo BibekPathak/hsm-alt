@@ -1,0 +1,360 @@
+syntax = "proto3";
+
+package mpc;
+
+option go_package = "github.com/yourorg/hsm/api/gen";
+
+// Enclave IPC (Go Node → Rust Enclave)
+
+service EnclaveService {
+    rpc Initialize(InitRequest) returns (InitResponse);
+    rpc GetStatus(StatusRequest) returns (StatusResponse);
+    
+    // DKG - Distributed Key Generation
+    rpc DKGStart(DKGStartRequest) returns (DKGStartResponse);
+    rpc DKGRound1(DKGRound1Request) returns (DKGRound1Response);
+    rpc DKGRound2(DKGRound2Request) returns (DKGRound2Response);
+    rpc DKGComplete(DKGCompleteRequest) returns (DKGCompleteResponse);
+    
+    // Signing
+    rpc SignStart(SignStartRequest) returns (SignStartResponse);
+    rpc SignRound1(SignRound1Request) returns (SignRound1Response);
+    rpc SignRound2(SignRound2Request) returns (SignRound2Response);
+    
+    // Key Management
+    rpc GetPublicKey(PublicKeyRequest) returns (PublicKeyResponse);
+    rpc GetKeyShare(KeyShareRequest) returns (KeyShareResponse);
+    rpc EvolveKey(EpochRequest) returns (EpochResponse);
+    rpc Reshare(ReshareRequest) returns (ReshareResponse);
+    
+    // Attestation
+    rpc Attest(AttestRequest) returns (AttestResponse);
+}
+
+message InitRequest {
+    uint32 node_id = 1;
+    uint32 threshold = 2;
+    uint32 total_shares = 3;
+    string cluster_id = 4;
+}
+
+message InitResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+    string state = 1;
+    uint32 epoch = 2;
+    bytes public_key = 3;
+    bool initialized = 4;
+    uint32 threshold = 5;
+    uint32 total_shares = 6;
+}
+
+message DKGStartRequest {
+    uint32 min_signers = 1;
+    uint32 max_signers = 2;
+}
+
+message DKGStartResponse {
+    bool success = 1;
+    string error = 2;
+    uint32 round = 3;
+    bytes round1_data = 4;
+}
+
+message DKGRound1Request {
+    uint32 from_node = 1;
+    repeated bytes commitments = 2;
+}
+
+message DKGRound1Response {
+    bool success = 1;
+    string error = 2;
+    uint32 round = 3;
+    bytes share = 4;
+    repeated bytes commitments = 5;
+}
+
+message DKGRound2Request {
+    map<uint32, bytes> participant_shares = 1;
+}
+
+message DKGRound2Response {
+    bool success = 1;
+    string error = 2;
+    bytes public_key = 3;
+}
+
+message DKGCompleteRequest {}
+
+message DKGCompleteResponse {
+    bool success = 1;
+    string error = 2;
+    bytes public_key = 3;
+}
+
+message SignStartRequest {
+    bytes message = 1;
+    repeated uint32 signers = 2;
+}
+
+message SignStartResponse {
+    bool success = 1;
+    string error = 2;
+    uint32 round = 3;
+}
+
+message SignRound1Request {}
+
+message SignRound1Response {
+    bool success = 1;
+    string error = 2;
+    bytes nonce_commitment = 3;
+    bytes commitment = 4;
+}
+
+message SignRound2Request {
+    bytes signing_package = 1;
+}
+
+message SignRound2Response {
+    bool success = 1;
+    string error = 2;
+    bytes partial_signature = 3;
+    bytes commitment = 4;
+}
+
+message PublicKeyRequest {}
+
+message PublicKeyResponse {
+    bytes public_key = 1;
+}
+
+message KeyShareRequest {}
+
+message KeyShareResponse {
+    bytes key_share = 1;
+    uint32 index = 2;
+}
+
+message EpochRequest {}
+
+message EpochResponse {
+    bool success = 1;
+    uint32 new_epoch = 2;
+    bytes new_public_key = 3;
+    bytes new_commitment = 4;
+}
+
+message ReshareRequest {
+    uint32 new_threshold = 1;
+    uint32 new_total = 2;
+}
+
+message ReshareResponse {
+    bool success = 1;
+    string error = 2;
+    bytes new_share = 3;
+}
+
+message AttestRequest {}
+
+message AttestResponse {
+    bytes quote = 1;
+    bytes measurement = 2;
+}
+
+// Node-to-Node Communication
+
+service NodeService {
+    rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+    rpc DKGMessage(NodeMessage) returns (NodeMessage);
+    rpc SignMessage(NodeMessage) returns (NodeMessage);
+    rpc DirectMessage(DirectMessageRequest) returns (DirectMessageResponse);
+    rpc TriggerSign(TriggerSignRequest) returns (TriggerSignResponse);
+    rpc AggregateSignatures(AggregateRequest) returns (AggregateResponse);
+    rpc AbortSign(AbortSignRequest) returns (AbortSignResponse);
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message HandshakeRequest {
+    uint32 node_id = 1;
+    string cluster_id = 2;
+    bytes attestation = 3;
+}
+
+message HandshakeResponse {
+    bool accepted = 1;
+    uint32 node_id = 2;
+    string cluster_id = 3;
+    bytes public_key = 4;
+}
+
+message NodeMessage {
+    string message_type = 1;
+    uint32 from_node = 2;
+    uint32 to_node = 3;
+    bytes payload = 4;
+    uint64 timestamp = 5;
+}
+
+message HeartbeatRequest {
+    uint32 node_id = 1;
+    uint64 sequence = 2;
+}
+
+message HeartbeatResponse {
+    uint32 node_id = 1;
+    uint64 sequence = 2;
+    bool healthy = 3;
+}
+
+message TriggerSignRequest {
+    bytes message = 1;
+    repeated uint32 signers = 2;
+    string session_id = 3;
+}
+
+message TriggerSignResponse {
+    bool accepted = 1;
+    string session_id = 2;
+    string error = 3;
+}
+
+message DirectMessageRequest {
+    string session_id = 1;
+    string message_type = 2;
+    uint32 from_node = 3;
+    uint32 to_node = 4;
+    bytes payload = 5;
+}
+
+message DirectMessageResponse {
+    bool success = 1;
+    bytes payload = 2;
+    string error = 3;
+}
+
+message AggregateRequest {
+    bytes message = 1;
+    map<uint32, bytes> partial_signatures = 2;
+}
+
+message AggregateResponse {
+    bool success = 1;
+    bytes signature = 2;
+    string error = 3;
+}
+
+message AbortSignRequest {
+    string session_id = 1;
+}
+
+message AbortSignResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// Admin / Operator API
+
+service OperatorService {
+    rpc CreateCluster(CreateClusterRequest) returns (CreateClusterResponse);
+    rpc AddNode(AddNodeRequest) returns (AddNodeResponse);
+    rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
+    rpc TriggerResharing(TriggerResharingRequest) returns (TriggerResharingResponse);
+    rpc GetClusterState(ClusterStateRequest) returns (ClusterStateResponse);
+    rpc ConfigurePolicy(PolicyRequest) returns (PolicyResponse);
+}
+
+message CreateClusterRequest {
+    string cluster_id = 1;
+    uint32 threshold = 2;
+    uint32 total_nodes = 3;
+}
+
+message CreateClusterResponse {
+    bool success = 1;
+    string cluster_id = 2;
+    string error = 3;
+}
+
+message AddNodeRequest {
+    string cluster_id = 1;
+    uint32 node_id = 2;
+    string endpoint = 3;
+}
+
+message AddNodeResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message RemoveNodeRequest {
+    string cluster_id = 1;
+    uint32 node_id = 2;
+}
+
+message RemoveNodeResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message TriggerResharingRequest {
+    string cluster_id = 1;
+    string reason = 2;
+}
+
+message TriggerResharingResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message ClusterStateRequest {
+    string cluster_id = 1;
+}
+
+message ClusterStateResponse {
+    string cluster_id = 1;
+    string state = 2;
+    uint32 total_nodes = 3;
+    uint32 healthy_nodes = 4;
+    repeated NodeState nodes = 5;
+}
+
+message NodeState {
+    uint32 node_id = 1;
+    string state = 2;
+    bool healthy = 3;
+    uint32 last_epoch = 4;
+}
+
+message PolicyRequest {
+    string cluster_id = 1;
+    Policy policy = 2;
+}
+
+message PolicyResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message Policy {
+    repeated PolicyRule rules = 1;
+    RateLimitConfig rate_limits = 2;
+}
+
+message PolicyRule {
+    string name = 1;
+    string condition = 2;
+    string action = 3;
+    int64 threshold = 4;
+}
+
+message RateLimitConfig {
+    int64 max_requests_per_minute = 1;
+    int64 max_value_per_hour = 2;
+}

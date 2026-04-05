@@ -1,0 +1,41 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mpc-operator
+  namespace: mpc-custody
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mpc-operator
+  template:
+    metadata:
+      labels:
+        name: mpc-operator
+    spec:
+      serviceAccountName: mpc-operator
+      containers:
+      - name: operator
+        image: mpc-operator:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: WATCH_NAMESPACE
+          value: "mpc-custody"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: OPERATOR_NAME
+          value: "mpc-operator"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"

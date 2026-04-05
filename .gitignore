@@ -1,0 +1,55 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+mpc_node
+mpc_enclave
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+/**/target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+cmd/mpc-enclave/target/
+dist/
+build/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+/**/node_modules/
+
+ui/dashboard/.next/

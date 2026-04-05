@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  mpc-node-1:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.node
+    container_name: mpc-node-1
+    environment:
+      - NODE_ID=1
+      - CLUSTER_ID=cluster-1
+      - THRESHOLD=3
+      - TOTAL_NODES=5
+      - LISTEN_ADDR=:7001
+      - ENCLAVE_ADDR=localhost:7002
+    ports:
+      - "7001:7001"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.10
+    depends_on:
+      - mpc-enclave-1
+
+  mpc-enclave-1:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.enclave
+    container_name: mpc-enclave-1
+    environment:
+      - NODE_ID=1
+      - THRESHOLD=3
+      - TOTAL_SHARES=5
+      - ENCLAVE_PORT=7002
+    ports:
+      - "7002:7002"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.11
+
+  mpc-node-2:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.node
+    container_name: mpc-node-2
+    environment:
+      - NODE_ID=2
+      - CLUSTER_ID=cluster-1
+      - THRESHOLD=3
+      - TOTAL_NODES=5
+      - LISTEN_ADDR=:7001
+      - ENCLAVE_ADDR=localhost:7003
+    ports:
+      - "7011:7001"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.20
+    depends_on:
+      - mpc-enclave-2
+
+  mpc-enclave-2:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.enclave
+    container_name: mpc-enclave-2
+    environment:
+      - NODE_ID=2
+      - THRESHOLD=3
+      - TOTAL_SHARES=5
+      - ENCLAVE_PORT=7003
+    ports:
+      - "7003:7003"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.21
+
+  mpc-node-3:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.node
+    container_name: mpc-node-3
+    environment:
+      - NODE_ID=3
+      - CLUSTER_ID=cluster-1
+      - THRESHOLD=3
+      - TOTAL_NODES=5
+      - LISTEN_ADDR=:7001
+      - ENCLAVE_ADDR=localhost:7004
+    ports:
+      - "7021:7001"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.30
+    depends_on:
+      - mpc-enclave-3
+
+  mpc-enclave-3:
+    build:
+      context: ../..
+      dockerfile: configs/docker/Dockerfile.enclave
+    container_name: mpc-enclave-3
+    environment:
+      - NODE_ID=3
+      - THRESHOLD=3
+      - TOTAL_SHARES=5
+      - ENCLAVE_PORT=7004
+    ports:
+      - "7004:7004"
+    networks:
+      mpc-network:
+        ipv4_address: 172.20.0.31
+
+networks:
+  mpc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

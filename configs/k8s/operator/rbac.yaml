@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mpc-operator
+  namespace: mpc-custody
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mpc-operator
+  namespace: mpc-custody
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mpc-operator
+  namespace: mpc-custody
+subjects:
+- kind: ServiceAccount
+  name: mpc-operator
+  namespace: mpc-custody
+roleRef:
+  kind: Role
+  name: mpc-operator
+  apiGroup: rbac.authorization.k8s.io
