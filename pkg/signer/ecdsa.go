@@ -8,14 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// Signer interface for signing operations
-type Signer interface {
-	Sign(hash []byte) ([]byte, error)
-	PublicKey() []byte
-	CompressedPublicKey() []byte
-	EthereumAddress() string
-}
-
 // ECDSASigner provides secp256k1 ECDSA signing for Ethereum transactions
 type ECDSASigner struct {
 	privateKey *ecdsa.PrivateKey
@@ -61,18 +53,31 @@ func NewECDSASignerFromBytes(keyBytes []byte) (*ECDSASigner, error) {
 	}, nil
 }
 
-// Sign signs a hash using ECDSA
-func (s *ECDSASigner) Sign(hash []byte) ([]byte, error) {
-	if len(hash) != 32 {
-		return nil, fmt.Errorf("hash must be 32 bytes, got %d", len(hash))
-	}
-
+// Sign signs a transaction using ECDSA
+func (s *ECDSASigner) Sign(tx *Transaction) ([]byte, error) {
+	// For now, create a simple hash from transaction fields
+	// In production, this would use proper EIP-155 signing
+	hash := crypto.Keccak256([]byte(tx.To), tx.Value.Bytes(), []byte(tx.Chain))
 	sig, err := crypto.Sign(hash, s.privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("signing failed: %w", err)
 	}
-
 	return sig, nil
+}
+
+// SignMessage signs an arbitrary message
+func (s *ECDSASigner) SignMessage(msg []byte) ([]byte, error) {
+	hash := crypto.Keccak256(msg)
+	sig, err := crypto.Sign(hash, s.privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("signing failed: %w", err)
+	}
+	return sig, nil
+}
+
+// Type returns the signer type
+func (s *ECDSASigner) Type() string {
+	return string(SignerTypeECDSA)
 }
 
 // PublicKey returns the uncompressed public key (65 bytes)

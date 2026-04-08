@@ -26,12 +26,14 @@ vendor/
 *.swo
 *~
 
+/**/target/
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Build artifacts
-target/
+cmd/mpc-enclave/target/
 dist/
 build/
 
@@ -47,3 +49,7 @@ build/
 *.key
 *.crt
 secrets/
+
+/**/node_modules/
+
+ui/dashboard/.next/
