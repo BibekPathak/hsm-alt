@@ -55,3 +55,20 @@ export const statusColors: Record<string, string> = {
 export function getStatusColor(status: string): string {
   return statusColors[status] || 'bg-gray-100 text-gray-800';
 }
+
+export const chainColors: Record<string, string> = {
+  ethereum: 'bg-blue-500',
+  solana: 'bg-purple-500',
+};
+
+export function getChainColor(chain: string): string {
+  return chainColors[chain] || 'bg-gray-500';
+}
+
+export function ChainBadge({ chain }: { chain: string }) {
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded text-white ${getChainColor(chain)}`}>
+      {chain.toUpperCase()}
+    </span>
+  );
+}

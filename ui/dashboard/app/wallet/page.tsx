@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { api, WalletInfo } from '@/lib/api';
-import { formatAddress, formatDate, cn } from '@/lib/utils';
+import { formatAddress, formatDate, cn, ChainBadge } from '@/lib/utils';
 
 export default function WalletsPage() {
   const queryClient = useQueryClient();
@@ -173,7 +173,9 @@ function WalletCard({
         {wallet.accounts.map((account) => (
           <div key={account.address} className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground uppercase">{account.chain}</p>
+              <div className="flex items-center gap-2 mb-1">
+                <ChainBadge chain={account.chain} />
+              </div>
               <div className="flex items-center gap-2">
                 <code className="text-sm font-mono">{formatAddress(account.address, 10)}</code>
                 <button

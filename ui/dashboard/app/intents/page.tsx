@@ -12,7 +12,7 @@ import {
   Search
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { formatAddress, formatTimeAgo, getStatusColor, cn } from '@/lib/utils';
+import { formatAddress, formatTimeAgo, getStatusColor, ChainBadge, cn } from '@/lib/utils';
 
 function IntentsContent() {
   const searchParams = useSearchParams();
@@ -86,6 +86,7 @@ function IntentsContent() {
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium">Intent ID</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Chain</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">From</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">To</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Value</th>
@@ -105,9 +106,12 @@ function IntentsContent() {
                         {intent.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3">
+                      <ChainBadge chain={intent.chain} />
+                    </td>
                     <td className="px-4 py-3 text-sm font-mono">{formatAddress(intent.from, 8)}</td>
                     <td className="px-4 py-3 text-sm font-mono">{formatAddress(intent.to, 8)}</td>
-                    <td className="px-4 py-3 text-sm font-medium">{intent.value} ETH</td>
+                    <td className="px-4 py-3 text-sm font-medium">{intent.value} {intent.chain === 'solana' ? 'SOL' : 'ETH'}</td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{formatTimeAgo(intent.created_at)}</td>
                   </tr>
                 ))}

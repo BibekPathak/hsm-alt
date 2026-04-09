@@ -43,8 +43,9 @@ type Signer interface {
 type SignerType string
 
 const (
-	SignerTypeECDSA SignerType = "ecdsa"
-	SignerTypeMPC   SignerType = "mpc"
+	SignerTypeECDSA  SignerType = "ecdsa"
+	SignerTypeMPC    SignerType = "mpc"
+	SignerTypeSolana SignerType = "solana"
 )
 
 // ErrNotImplemented is returned when a signer method is not yet implemented

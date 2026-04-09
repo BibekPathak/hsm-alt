@@ -7,10 +7,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/yourorg/hsm/pkg/blockchain/ethereum"
+	"github.com/yourorg/hsm/pkg/blockchain/solana"
 	"github.com/yourorg/hsm/pkg/signer"
 )
 
-// FeeSpeed represents the fee speed preset
 type FeeSpeed string
 
 const (
@@ -19,32 +19,43 @@ const (
 	FeeSpeedFast     FeeSpeed = "fast"
 )
 
-// Service orchestrates transaction building, signing, and broadcasting
 type Service struct {
-	builders map[string]*ethereum.TxBuilder // chain -> builder
+	ethereumBuilders map[string]*ethereum.TxBuilder
+	solanaBuilders   map[string]*solana.TxBuilder
 }
 
-// NewService creates a new transaction service
 func NewService() *Service {
 	return &Service{
-		builders: make(map[string]*ethereum.TxBuilder),
+		ethereumBuilders: make(map[string]*ethereum.TxBuilder),
+		solanaBuilders:   make(map[string]*solana.TxBuilder),
 	}
 }
 
-// AddChain adds a blockchain adapter
 func (s *Service) AddChain(chain string, builder *ethereum.TxBuilder) {
-	s.builders[chain] = builder
+	s.ethereumBuilders[chain] = builder
 }
 
-// GetBuilder returns the builder for a chain
+func (s *Service) AddSolanaChain(chain string, builder *solana.TxBuilder) {
+	s.solanaBuilders[chain] = builder
+}
+
 func (s *Service) GetBuilder(chain string) (*ethereum.TxBuilder, bool) {
-	builder, ok := s.builders[chain]
+	builder, ok := s.ethereumBuilders[chain]
 	return builder, ok
 }
 
-// SendTransactionEIP1559 builds, signs, and broadcasts an EIP-1559 transaction
+func (s *Service) GetSolanaBuilder(chain string) (*solana.TxBuilder, bool) {
+	builder, ok := s.solanaBuilders[chain]
+	return builder, ok
+}
+
+func (s *Service) IsSolanaChain(chain string) bool {
+	_, ok := s.solanaBuilders[chain]
+	return ok
+}
+
 func (s *Service) SendTransactionEIP1559(ctx context.Context, chain string, to string, value *big.Int, ecdsaSigner *signer.ECDSASigner, speed FeeSpeed) (string, error) {
-	builder, ok := s.builders[chain]
+	builder, ok := s.ethereumBuilders[chain]
 	if !ok {
 		return "", fmt.Errorf("unsupported chain: %s", chain)
 	}
@@ -64,9 +75,56 @@ func (s *Service) SendTransactionEIP1559(ctx context.Context, chain string, to s
 	return txHash, nil
 }
 
-// CheckBalanceSufficient checks if account has enough balance
+func (s *Service) SendSolanaTransaction(ctx context.Context, chain string, from, to string, lamports uint64, solanaSigner *signer.SolanaSigner, confirm bool) (string, error) {
+	builder, ok := s.solanaBuilders[chain]
+	if !ok {
+		return "", fmt.Errorf("unsupported chain: %s", chain)
+	}
+
+	unsignedTx, err := builder.BuildTransferTx(ctx, from, to, lamports)
+	if err != nil {
+		return "", fmt.Errorf("failed to build tx: %w", err)
+	}
+
+	signature, err := solanaSigner.SignTransaction(unsignedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign tx: %w", err)
+	}
+
+	signedTx, err := builder.AddSignature(unsignedTx, signature)
+	if err != nil {
+		return "", fmt.Errorf("failed to add signature: %w", err)
+	}
+
+	txHash, err := builder.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to broadcast tx: %w", err)
+	}
+
+	if confirm {
+		if err := builder.ConfirmTransaction(ctx, txHash); err != nil {
+			return txHash, fmt.Errorf("tx sent but confirmation failed: %w", err)
+		}
+	}
+
+	return txHash, nil
+}
+
 func (s *Service) CheckBalanceSufficient(ctx context.Context, chain string, address string, value *big.Int, gasLimit uint64) (bool, *big.Int, error) {
-	builder, ok := s.builders[chain]
+	if s.IsSolanaChain(chain) {
+		builder, ok := s.solanaBuilders[chain]
+		if !ok {
+			return false, nil, fmt.Errorf("unsupported chain: %s", chain)
+		}
+		lamports := value.Uint64()
+		sufficient, required, err := builder.CheckBalanceSufficient(ctx, address, lamports)
+		if err != nil {
+			return false, nil, err
+		}
+		return sufficient, big.NewInt(int64(required)), nil
+	}
+
+	builder, ok := s.ethereumBuilders[chain]
 	if !ok {
 		return false, nil, fmt.Errorf("unsupported chain: %s", chain)
 	}
@@ -74,23 +132,19 @@ func (s *Service) CheckBalanceSufficient(ctx context.Context, chain string, addr
 	return builder.CheckBalanceSufficient(ctx, address, value, gasLimit)
 }
 
-// SendTransaction builds, signs, and broadcasts a transaction
 func (s *Service) SendTransaction(ctx context.Context, chain string, to string, value *big.Int, ecdsaSigner *signer.ECDSASigner) (string, error) {
-	builder, ok := s.builders[chain]
+	builder, ok := s.ethereumBuilders[chain]
 	if !ok {
 		return "", fmt.Errorf("unsupported chain: %s", chain)
 	}
 
-	// Get private key from signer
 	privateKey := ecdsaSigner.GetPrivateKey()
 
-	// Build and sign transaction
 	_, rawTxHex, err := builder.BuildAndSignTx(ctx, to, value, privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to build/sign tx: %w", err)
 	}
 
-	// Broadcast
 	txHash, err := builder.BroadcastTransaction(ctx, rawTxHex)
 	if err != nil {
 		return "", fmt.Errorf("failed to broadcast tx: %w", err)
@@ -99,9 +153,20 @@ func (s *Service) SendTransaction(ctx context.Context, chain string, to string, 
 	return txHash, nil
 }
 
-// GetBalance gets the balance for an address on a chain
 func (s *Service) GetBalance(ctx context.Context, chain string, address string) (*big.Int, error) {
-	builder, ok := s.builders[chain]
+	if s.IsSolanaChain(chain) {
+		builder, ok := s.solanaBuilders[chain]
+		if !ok {
+			return nil, fmt.Errorf("unsupported chain: %s", chain)
+		}
+		lamports, err := builder.GetBalance(ctx, address)
+		if err != nil {
+			return nil, err
+		}
+		return big.NewInt(int64(lamports)), nil
+	}
+
+	builder, ok := s.ethereumBuilders[chain]
 	if !ok {
 		return nil, fmt.Errorf("unsupported chain: %s", chain)
 	}
@@ -109,9 +174,15 @@ func (s *Service) GetBalance(ctx context.Context, chain string, address string) 
 	return builder.GetBalance(ctx, address)
 }
 
-// CreateWallet creates a new keypair and returns the address
+func (s *Service) GetSolanaBalance(ctx context.Context, chain string, address string) (uint64, error) {
+	builder, ok := s.solanaBuilders[chain]
+	if !ok {
+		return 0, fmt.Errorf("unsupported chain: %s", chain)
+	}
+	return builder.GetBalance(ctx, address)
+}
+
 func CreateWallet() (*signer.ECDSASigner, string, error) {
-	// Generate ECDSA key pair
 	ecdsaSigner, err := signer.NewECDSASigner()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate key: %w", err)
@@ -121,7 +192,16 @@ func CreateWallet() (*signer.ECDSASigner, string, error) {
 	return ecdsaSigner, address, nil
 }
 
-// DeriveAddressFromPrivateKey derives an address from a private key
+func CreateSolanaWallet() (*signer.SolanaSigner, string, error) {
+	solanaSigner, err := signer.NewSolanaSigner()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate key: %w", err)
+	}
+
+	address := solanaSigner.Address()
+	return solanaSigner, address, nil
+}
+
 func DeriveAddressFromPrivateKey(privateKeyHex string) (string, error) {
 	key, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -131,18 +211,14 @@ func DeriveAddressFromPrivateKey(privateKeyHex string) (string, error) {
 	return crypto.PubkeyToAddress(key.PublicKey).Hex(), nil
 }
 
-// AddressFromPublicKey derives an address from a public key
 func AddressFromPublicKey(pubKey []byte) (string, error) {
-	// This is a placeholder - real implementation would use Keccak256
 	if len(pubKey) != 65 {
 		return "", fmt.Errorf("expected 65 bytes uncompressed public key")
 	}
 
-	// Extract the actual public key without the 0x04 prefix
 	ethKey := pubKey[1:]
 
 	hash := crypto.Keccak256(ethKey)
-	// Take last 20 bytes
 	address := hash[12:]
 
 	return fmt.Sprintf("0x%x", address), nil
