@@ -282,6 +282,15 @@ func (c *RPCClient) call(ctx context.Context, method string, params ...interface
 	return rpcResp.Result, nil
 }
 
+// Call executes a JSON-RPC call and returns the result as a string
+func (c *RPCClient) Call(ctx context.Context, params map[string]interface{}, block string) (string, error) {
+	result, err := c.call(ctx, "eth_call", []interface{}{params, block})
+	if err != nil {
+		return "", err
+	}
+	return string(result), nil
+}
+
 // parseHexUint64 parses a hex string (0x...) to uint64
 func parseHexUint64(hex string) uint64 {
 	if len(hex) <= 2 {

@@ -21,7 +21,8 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // Types
 export interface Wallet {
-  id: string;
+  id?: string;
+  wallet_id?: string;
   name: string;
   created_at: string;
 }
@@ -46,6 +47,11 @@ export interface WalletSummary {
   total_balance: string;
   addresses: AddressBalance[];
   intents: IntentStatusCounts;
+  fees?: {
+    native: string;
+    erc20: string;
+    spl: string;
+  };
 }
 
 export interface AddressBalance {
@@ -72,7 +78,7 @@ export interface TransactionIntent {
   from: string;
   to: string;
   value: string;
-  value_eth: string;
+  value_display?: string;
   gas_limit: number;
   status: string;
   created_at: string;
@@ -85,6 +91,11 @@ export interface TransactionIntent {
   retry_count: number;
   max_retries: number;
   fee_speed: string;
+  // Token fields
+  token_address?: string;
+  token_decimals?: number;
+  token_symbol?: string;
+  token_type?: string;
 }
 
 export interface IntentListResponse {
@@ -165,6 +176,11 @@ export const api = {
     gas_limit?: number;
     required_sigs?: number;
     fee_speed?: string;
+    // Token fields
+    token_address?: string;
+    token_decimals?: number;
+    token_symbol?: string;
+    token_type?: string;
   }) => fetchApi<TransactionIntent>('/intent', {
     method: 'POST',
     body: JSON.stringify(data),

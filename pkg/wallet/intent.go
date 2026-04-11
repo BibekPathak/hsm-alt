@@ -34,8 +34,8 @@ type TransactionIntent struct {
 	Chain        string       `json:"chain"`
 	From         string       `json:"from"`
 	To           string       `json:"to"`
-	Value        string       `json:"value"`     // In wei
-	ValueETH     string       `json:"value_eth"` // Human readable
+	Value        string       `json:"value"`                   // In wei/lamports
+	ValueDisplay string       `json:"value_display,omitempty"` // Human readable
 	Data         string       `json:"data,omitempty"`
 	GasLimit     uint64       `json:"gas_limit"`
 	Nonce        uint64       `json:"nonce,omitempty"`
@@ -50,6 +50,12 @@ type TransactionIntent struct {
 	RetryCount   int          `json:"retry_count"`
 	MaxRetries   int          `json:"max_retries"`
 	FeeSpeed     string       `json:"fee_speed"` // slow, standard, fast
+
+	// Token fields for ERC-20/SPL transfers
+	TokenAddress  string `json:"token_address,omitempty"`  // Contract address (Ethereum) or Mint (Solana)
+	TokenDecimals uint8  `json:"token_decimals,omitempty"` // e.g., 6 for USDC
+	TokenSymbol   string `json:"token_symbol,omitempty"`   // e.g., "USDC"
+	TokenType     string `json:"token_type,omitempty"`     // "native", "erc20", "spl"
 }
 
 // IntentStore manages transaction intents for audit trail and draft approvals
@@ -69,7 +75,7 @@ func NewIntentStore(baseDir string) (*IntentStore, error) {
 }
 
 // CreateIntent creates a new transaction intent
-func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH string, gasLimit uint64, requiredSigs int, expiryHours int, maxRetries int, feeSpeed string) (*TransactionIntent, error) {
+func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueDisplay string, gasLimit uint64, requiredSigs int, expiryHours int, maxRetries int, feeSpeed string) (*TransactionIntent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -92,7 +98,7 @@ func (s *IntentStore) CreateIntent(walletID, chain, from, to, value, valueETH st
 		From:         from,
 		To:           to,
 		Value:        value,
-		ValueETH:     valueETH,
+		ValueDisplay: valueDisplay,
 		GasLimit:     gasLimit,
 		Status:       IntentStatusDraft,
 		CreatedAt:    time.Now(),
@@ -595,6 +601,13 @@ func (s *IntentStore) saveIntent(intent *TransactionIntent) error {
 	}
 
 	return nil
+}
+
+func (s *IntentStore) UpdateIntent(intent *TransactionIntent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	intent.UpdatedAt = time.Now()
+	return s.saveIntent(intent)
 }
 
 func (s *IntentStore) intentPath(id string) string {

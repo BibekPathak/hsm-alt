@@ -111,7 +111,9 @@ function IntentsContent() {
                     </td>
                     <td className="px-4 py-3 text-sm font-mono">{formatAddress(intent.from, 8)}</td>
                     <td className="px-4 py-3 text-sm font-mono">{formatAddress(intent.to, 8)}</td>
-                    <td className="px-4 py-3 text-sm font-medium">{intent.value} {intent.chain === 'solana' ? 'SOL' : 'ETH'}</td>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      {intent.value_display || `${intent.value} ${intent.token_symbol || (intent.chain === 'solana' ? 'SOL' : 'ETH')}`}
+                    </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{formatTimeAgo(intent.created_at)}</td>
                   </tr>
                 ))}

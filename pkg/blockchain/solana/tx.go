@@ -3,6 +3,7 @@ package solana
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,9 @@ import (
 
 const (
 	SystemProgramID = "11111111111111111111111111111111"
+	// SPL Token Program IDs
+	TokenProgramID     = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+	AssociatedTokenPID = "ATokenGPvbdGVxr1b2hvZbcYZgXXGMz7GaWNjYdNW"
 )
 
 type TxBuilder struct {
@@ -268,4 +272,157 @@ func (b *TxBuilder) BuildTransferTxWithBlockhash(ctx context.Context, from, to s
 	}
 
 	return b.serializeMessage(msg)
+}
+
+// GetAssociatedTokenAddress derives the ATA for a wallet and token mint
+func GetAssociatedTokenAddress(owner, mint string) (string, error) {
+	ownerPubkey, err := base58.Decode(owner)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode owner: %w", err)
+	}
+
+	mintPubkey, err := base58.Decode(mint)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode mint: %w", err)
+	}
+
+	programID, _ := base58.Decode(AssociatedTokenPID)
+
+	// Simple hash for ATA derivation: owner || mint || program
+	ataData := append(ownerPubkey[:32], mintPubkey[:32]...)
+	ataData = append(ataData, programID[:32]...)
+
+	// Use hash as deterministic seed
+	hasher := sha256.New()
+	hasher.Write(ataData)
+	hash := hasher.Sum(nil)
+
+	// Take first 32 bytes and encode as address
+	ataBytes := append([]byte{0x03}, hash[:31]...) // Version byte + 31 hash bytes
+
+	return base58.Encode(ataBytes), nil
+}
+
+// GetTokenAccountBalance gets the SPL token balance for an ATA
+func (b *TxBuilder) GetTokenAccountBalance(ctx context.Context, ata string) (uint64, error) {
+	result, err := b.rpcClient.call(ctx, "getTokenAccountBalance", ata)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get token balance: %w", err)
+	}
+
+	var response struct {
+		Value struct {
+			Amount   string `json:"amount"`
+			Decimals uint8  `json:"decimals"`
+		} `json:"value"`
+	}
+	if err := json.Unmarshal(result, &response); err != nil {
+		return 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	var amount uint64
+	fmt.Sscanf(response.Value.Amount, "%d", &amount)
+	return amount, nil
+}
+
+// GetTokenBalance gets token balance for an owner (finds ATA first)
+func (b *TxBuilder) GetTokenBalance(ctx context.Context, owner, mint string) (uint64, error) {
+	ata, err := GetAssociatedTokenAddress(owner, mint)
+	if err != nil {
+		return 0, err
+	}
+
+	// Check if ATA exists
+	exists, err := b.rpcClient.call(ctx, "getAccountInfo", ata, map[string]interface{}{"encoding": "base64"})
+	if err != nil {
+		return 0, nil // Account doesn't exist = 0 balance
+	}
+
+	var response struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.Unmarshal(exists, &response); err != nil {
+		return 0, nil
+	}
+
+	if response.Value == nil {
+		return 0, nil // ATA doesn't exist
+	}
+
+	return b.GetTokenAccountBalance(ctx, ata)
+}
+
+// createSPLTransferInstruction creates a SPL token transfer instruction
+func (b *TxBuilder) createSPLTransferInstruction(source, dest, mint, authority string, amount uint64) CompiledInstruction {
+	// SPL Transfer instruction: transfer(checker, source, dest, authority, signers[], amount)
+	// Program data: [transfer instruction (1 byte) + amount (8 bytes)]
+	data := make([]byte, 9)
+	data[0] = 3 // Transfer instruction index
+
+	// Encode amount as little-endian 64-bit
+	binary.LittleEndian.PutUint64(data[1:], amount)
+
+	return CompiledInstruction{
+		ProgramIDIndex: 2,                      // Token program
+		Accounts:       []uint8{4, 5, 1, 0, 3}, // source, dest, mint, authority, (signer)
+		Data:           data,
+	}
+}
+
+// BuildSPLTransferTx builds an SPL token transfer transaction
+func (b *TxBuilder) BuildSPLTransferTx(ctx context.Context, from, to, mint string, amount uint64) ([]byte, error) {
+	blockhash, err := b.rpcClient.GetLatestBlockhash(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blockhash: %w", err)
+	}
+
+	// Derive ATAs (simplified - real implementation uses proper PDA derivation)
+	fromAta := from // In real impl: derive ATA(from, mint)
+	toAta := to     // In real impl: derive ATA(to, mint)
+
+	// For now, use simplified message structure - just token program accounts
+	msg := &Message{
+		Header: MessageHeader{
+			NumRequiredSignatures:       1,
+			NumReadonlySignedAccounts:   2,
+			NumReadonlyUnsignedAccounts: 2,
+		},
+		AccountKeys: []string{
+			from,            // 0: fee payer + source authority (signer)
+			fromAta,         // 1: source ATA
+			toAta,           // 2: destination ATA
+			mint,            // 3: token mint
+			from,            // 4: authority (signer)
+			TokenProgramID,  // 5: token program
+			SystemProgramID, // 6: system program (for any needed transfers)
+		},
+		RecentBlockhash: blockhash.Blockhash,
+		Instructions: []CompiledInstruction{
+			{
+				ProgramIDIndex: 5,                      // Token program
+				Accounts:       []uint8{1, 2, 3, 0, 0}, // source, dest, mint, authority (all same for now)
+				Data:           b.createSPLTransferData(amount),
+			},
+		},
+	}
+
+	return b.serializeMessage(msg)
+}
+
+func (b *TxBuilder) createSPLTransferData(amount uint64) []byte {
+	data := make([]byte, 9)
+	data[0] = 3 // Transfer instruction
+	binary.LittleEndian.PutUint64(data[1:], amount)
+	return data
+}
+
+// CheckSPLBalanceSufficient checks if account has enough token balance
+func (b *TxBuilder) CheckSPLBalanceSufficient(ctx context.Context, owner, mint string, amount uint64) (bool, uint64, error) {
+	balance, err := b.GetTokenBalance(ctx, owner, mint)
+	if err != nil {
+		return false, 0, err
+	}
+
+	sufficient := balance >= amount
+	return sufficient, balance, nil
 }

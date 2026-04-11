@@ -13,7 +13,7 @@ import {
 import Link from 'next/link';
 import { useState } from 'react';
 import { api, WalletSummary, TransactionIntent } from '@/lib/api';
-import { formatAddress, formatBalance, getStatusColor, cn } from '@/lib/utils';
+import { formatAddress, formatBalance, getStatusColor, ChainBadge, cn } from '@/lib/utils';
 
 export default function WalletDetailPage() {
   const params = useParams();
@@ -33,7 +33,16 @@ export default function WalletDetailPage() {
   });
 
   const createIntentMutation = useMutation({
-    mutationFn: (data: { to: string; value: string; fee_speed?: string }) => 
+    mutationFn: (data: { 
+      to: string; 
+      value: string; 
+      fee_speed?: string;
+      chain?: string;
+      token_address?: string;
+      token_decimals?: number;
+      token_symbol?: string;
+      token_type?: string;
+    }) => 
       api.createIntent({ ...data, wallet_id: walletId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intents', walletId] });
@@ -84,7 +93,7 @@ export default function WalletDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Total Balance</p>
-            <p className="text-4xl font-bold">{summary.total_balance} ETH</p>
+            <p className="text-4xl font-bold">{summary.total_balance}</p>
           </div>
           <button
             onClick={() => setShowSendModal(true)}
@@ -94,6 +103,39 @@ export default function WalletDetailPage() {
             Send
           </button>
         </div>
+        
+        {/* Per-chain balances */}
+        <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-4">
+          {summary.addresses?.map((addr) => (
+            <div key={addr.address} className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ChainBadge chain={addr.chain} />
+                <span className="text-sm text-muted-foreground">{addr.balance}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {/* Fee estimates */}
+        {summary.fees && (
+          <div className="mt-4 pt-4 border-t">
+            <p className="text-sm text-muted-foreground mb-2">Estimated Fees</p>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Native: </span>
+                <span className="font-mono">{summary.fees.native}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">ERC-20: </span>
+                <span className="font-mono">{summary.fees.erc20}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">SPL: </span>
+                <span className="font-mono">{summary.fees.spl}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Addresses */}
@@ -195,17 +237,47 @@ function SendModal({
   error 
 }: { 
   onClose: () => void; 
-  onSubmit: (data: { to: string; value: string; fee_speed?: string }) => void;
+  onSubmit: (data: { 
+    to: string; 
+    value: string; 
+    fee_speed?: string;
+    chain?: string;
+    token_address?: string;
+    token_decimals?: number;
+    token_symbol?: string;
+    token_type?: string;
+  }) => void;
   loading: boolean;
   error?: string;
 }) {
   const [to, setTo] = useState('');
   const [value, setValue] = useState('');
   const [feeSpeed, setFeeSpeed] = useState('standard');
+  const [chain, setChain] = useState('ethereum');
+  const [tokenType, setTokenType] = useState('native');
+  const [tokenAddress, setTokenAddress] = useState('');
+  const [tokenDecimals, setTokenDecimals] = useState(18);
+  const [tokenSymbol, setTokenSymbol] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ to, value, fee_speed: feeSpeed });
+    const data: any = { to, value, fee_speed: feeSpeed, chain };
+    
+    if (tokenType !== 'native') {
+      data.token_type = tokenType;
+      data.token_address = tokenAddress;
+      data.token_decimals = tokenDecimals;
+      data.token_symbol = tokenSymbol;
+    }
+    
+    onSubmit(data);
+  };
+
+  const getTokenSymbol = () => {
+    if (tokenType === 'native') {
+      return chain === 'solana' ? 'SOL' : 'ETH';
+    }
+    return tokenSymbol || 'TOKEN';
   };
 
   return (
@@ -215,19 +287,75 @@ function SendModal({
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Recipient Address</label>
-            <input
-              type="text"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="0x..."
+            <label className="block text-sm font-medium mb-1">Chain</label>
+            <select
+              value={chain}
+              onChange={(e) => setChain(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg"
-              required
-            />
+            >
+              <option value="ethereum">Ethereum</option>
+              <option value="solana">Solana</option>
+            </select>
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-1">Amount (ETH)</label>
+            <label className="block text-sm font-medium mb-1">Token Type</label>
+            <select
+              value={tokenType}
+              onChange={(e) => setTokenType(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg"
+            >
+              <option value="native">Native ({chain === 'solana' ? 'SOL' : 'ETH'})</option>
+              <option value="erc20">ERC-20 Token</option>
+              <option value="spl">SPL Token</option>
+            </select>
+          </div>
+          
+          {tokenType !== 'native' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {tokenType === 'erc20' ? 'Token Contract Address' : 'Token Mint Address'}
+                </label>
+                <input
+                  type="text"
+                  value={tokenAddress}
+                  onChange={(e) => setTokenAddress(e.target.value)}
+                  placeholder={tokenType === 'erc20' ? '0x...' : 'Token mint...'}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  required={tokenType !== 'native'}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Decimals</label>
+                  <input
+                    type="number"
+                    value={tokenDecimals}
+                    onChange={(e) => setTokenDecimals(parseInt(e.target.value) || 18)}
+                    placeholder="18"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Symbol</label>
+                  <input
+                    type="text"
+                    value={tokenSymbol}
+                    onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
+                    placeholder="USDC"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Amount ({getTokenSymbol()})
+            </label>
             <input
               type="text"
               value={value}
@@ -238,18 +366,20 @@ function SendModal({
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Fee Speed</label>
-            <select
-              value={feeSpeed}
-              onChange={(e) => setFeeSpeed(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-            >
-              <option value="slow">Slow (1.1x base fee)</option>
-              <option value="standard">Standard (1.3x base fee)</option>
-              <option value="fast">Fast (1.6x base fee)</option>
-            </select>
-          </div>
+          {tokenType === 'native' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Fee Speed</label>
+              <select
+                value={feeSpeed}
+                onChange={(e) => setFeeSpeed(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="slow">Slow (1.1x base fee)</option>
+                <option value="standard">Standard (1.3x base fee)</option>
+                <option value="fast">Fast (1.6x base fee)</option>
+              </select>
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-destructive">{error}</p>

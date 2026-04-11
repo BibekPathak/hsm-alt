@@ -122,16 +122,19 @@ export default function WalletsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {wallets?.map((walletData) => (
-            <WalletCard
-              key={walletData.wallet.id}
-              wallet={walletData}
-              onDelete={() => deleteMutation.mutate(walletData.wallet.id)}
-              deleting={deleteMutation.isPending}
-              onCopy={copyAddress}
-              copiedId={copiedId}
-            />
-          ))}
+          {wallets?.map((walletData) => {
+            const walletId = walletData.wallet.wallet_id || walletData.wallet.id || '';
+            return (
+              <WalletCard
+                key={walletId}
+                wallet={walletData}
+                onDelete={() => deleteMutation.mutate(walletId)}
+                deleting={deleteMutation.isPending}
+                onCopy={copyAddress}
+                copiedId={copiedId}
+              />
+            );
+          })}
         </div>
       )}
     </div>
@@ -195,12 +198,15 @@ function WalletCard({
         ))}
       </div>
       
-      <Link
-        href={`/wallet/${wallet.wallet.id}`}
-        className="block p-3 text-center border-t text-sm text-primary hover:bg-muted/50"
-      >
-        View Details →
-      </Link>
+      {/* View Details Link */}
+      {((wallet.wallet.wallet_id || wallet.wallet.id)) && (
+        <Link
+          href={`/wallet/${wallet.wallet.wallet_id || wallet.wallet.id}`}
+          className="block p-3 text-center border-t text-sm text-primary hover:bg-muted/50"
+        >
+          View Details →
+        </Link>
+      )}
     </div>
   );
 }

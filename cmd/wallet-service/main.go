@@ -520,10 +520,17 @@ func (s *Server) handleWalletSummary(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		totalBalance.Add(&totalBalance, balance)
-		ethBalance := new(big.Float).Quo(new(big.Float).SetInt(balance), new(big.Float).SetInt(big.NewInt(1e18)))
+		var balanceStr string
+		if acc.Chain == "solana" {
+			solBalance := float64(balance.Uint64()) / float64(solana.LamportsPerSOL)
+			balanceStr = fmt.Sprintf("%.6f", solBalance)
+		} else {
+			ethBalance := new(big.Float).Quo(new(big.Float).SetInt(balance), new(big.Float).SetInt(big.NewInt(1e18)))
+			balanceStr = ethBalance.Text('f', 6)
+		}
 		balances = append(balances, addrBalance{
 			Address: acc.Address,
-			Balance: ethBalance.Text('f', 6),
+			Balance: balanceStr,
 			Chain:   acc.Chain,
 		})
 	}
@@ -533,25 +540,54 @@ func (s *Server) handleWalletSummary(w http.ResponseWriter, r *http.Request) {
 	// Get intent counts for this wallet
 	intentCounts, _ := s.intentStore.GetIntentStatusCounts(walletID)
 
+	// Get fee estimates
+	type feeEstimate struct {
+		Native string `json:"native"`
+		ERC20  string `json:"erc20"`
+		SPL    string `json:"spl"`
+	}
+	fees := feeEstimate{
+		Native: "21000 gas",
+		ERC20:  "65000 gas",
+		SPL:    "10000 lamports",
+	}
+
+	// Try to get actual fee estimates
+	if builder, ok := s.txService.GetBuilder("ethereum"); ok {
+		if feeInfo, err := builder.GetFeeInfo(ctx); err == nil {
+			fees.Native = fmt.Sprintf("%.0f gas (%.2f gwei)", float64(21000), float64(feeInfo.Standard.Int64())/1e9)
+		}
+	}
+	if solBuilder, ok := s.txService.GetSolanaBuilder("solana"); ok {
+		if fee, err := solBuilder.GetFeeEstimate(ctx); err == nil {
+			fees.SPL = fmt.Sprintf("%d lamports", fee)
+		}
+	}
+
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"wallet_id":     wal.ID,
 		"name":          wal.Name,
 		"total_balance": totalETH.Text('f', 6),
 		"addresses":     balances,
 		"intents":       intentCounts,
+		"fees":          fees,
 	})
 }
 
 func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		WalletID     string `json:"wallet_id"`
-		Chain        string `json:"chain"`
-		To           string `json:"to"`
-		Value        string `json:"value"`
-		GasLimit     uint64 `json:"gas_limit"`
-		RequiredSigs int    `json:"required_sigs"`
-		Creator      string `json:"creator"`   // Who created this intent
-		FeeSpeed     string `json:"fee_speed"` // slow, standard, fast
+		WalletID      string `json:"wallet_id"`
+		Chain         string `json:"chain"`
+		To            string `json:"to"`
+		Value         string `json:"value"`
+		GasLimit      uint64 `json:"gas_limit"`
+		RequiredSigs  int    `json:"required_sigs"`
+		Creator       string `json:"creator"`                  // Who created this intent
+		FeeSpeed      string `json:"fee_speed"`                // slow, standard, fast
+		TokenAddress  string `json:"token_address,omitempty"`  // ERC-20 contract or SPL mint
+		TokenDecimals uint8  `json:"token_decimals,omitempty"` // e.g., 6 for USDC
+		TokenSymbol   string `json:"token_symbol,omitempty"`   // e.g., "USDC"
+		TokenType     string `json:"token_type,omitempty"`     // "native", "erc20", "spl"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendError(w, http.StatusBadRequest, "Invalid request body")
@@ -563,9 +599,30 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		req.Chain = "ethereum"
 	}
 
-	// Default gas limit
+	// Determine token type
+	if req.TokenType == "" {
+		if req.TokenAddress != "" {
+			// Token address provided - infer token type from chain
+			if req.Chain == "solana" {
+				req.TokenType = "spl"
+			} else {
+				req.TokenType = "erc20"
+			}
+		} else {
+			req.TokenType = "native"
+		}
+	}
+
+	// Default gas limit based on token type
 	if req.GasLimit == 0 {
-		req.GasLimit = 21000
+		switch req.TokenType {
+		case "erc20":
+			req.GasLimit = 65000 // ERC-20 transfer
+		case "spl":
+			req.GasLimit = 10000 // SPL transfer (compute units)
+		default:
+			req.GasLimit = 21000 // Native ETH transfer
+		}
 	}
 
 	// Default required_sigs to 1 for fast path
@@ -585,6 +642,16 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create display value
+	valueDisplay := req.Value
+	if req.TokenSymbol != "" {
+		valueDisplay = fmt.Sprintf("%s %s", req.Value, req.TokenSymbol)
+	} else if req.Chain == "solana" {
+		valueDisplay = fmt.Sprintf("%s SOL", req.Value)
+	} else if req.Chain == "ethereum" && req.TokenType == "native" {
+		valueDisplay = fmt.Sprintf("%s ETH", req.Value)
+	}
+
 	// Create intent
 	intent, err := s.intentStore.CreateIntent(
 		req.WalletID,
@@ -592,7 +659,7 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		account.Address,
 		req.To,
 		req.Value,
-		"",
+		valueDisplay,
 		req.GasLimit,
 		req.RequiredSigs,
 		s.intentExpiryHours,
@@ -602,6 +669,15 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create intent: %v", err))
 		return
+	}
+
+	// Update token fields
+	if req.TokenAddress != "" || req.TokenType != "native" {
+		intent.TokenAddress = req.TokenAddress
+		intent.TokenDecimals = req.TokenDecimals
+		intent.TokenSymbol = req.TokenSymbol
+		intent.TokenType = req.TokenType
+		s.intentStore.UpdateIntent(intent)
 	}
 
 	// Auto-approve if required_sigs is 1 (fast path)
@@ -615,7 +691,7 @@ func (s *Server) handleCreateIntent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("Created intent %s for wallet %s (required_sigs: %d)", intent.ID, req.WalletID, req.RequiredSigs)
+	log.Printf("Created intent %s for wallet %s (required_sigs: %d, token: %s)", intent.ID, req.WalletID, req.RequiredSigs, req.TokenType)
 	sendJSON(w, http.StatusCreated, intent)
 }
 
@@ -802,110 +878,192 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var txHash string
+	tokenType := intent.TokenType
+	if tokenType == "" {
+		tokenType = "native"
+	}
 
-	if intent.Chain == "solana" {
-		lamports, err := solana.ParseSOL(intent.Value)
-		if err != nil {
-			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Invalid SOL value")
-			sendError(w, http.StatusBadRequest, "Invalid SOL value")
-			return
-		}
+	// Execute based on token type
+	switch {
+	case tokenType == "spl":
+		txHash, err = s.executeSPLIntent(ctx, intent, intentID, privateKeyHex)
+	case tokenType == "erc20":
+		txHash, err = s.executeERC20Intent(ctx, intent, intentID, privateKeyHex)
+	default:
+		txHash, err = s.executeNativeIntent(ctx, intent, intentID, privateKeyHex)
+	}
 
-		sufficient, _, err := s.txService.CheckBalanceSufficient(ctx, intent.Chain, intent.From, big.NewInt(int64(lamports)), 0)
-		if err != nil {
-			log.Printf("Warning: Balance check failed: %v", err)
-		} else if !sufficient {
-			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Insufficient balance")
-			sendError(w, http.StatusBadRequest, "Insufficient balance")
-			return
-		}
-
-		if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
-			sendError(w, http.StatusInternalServerError, "Failed to update intent status")
-			return
-		}
-
-		solanaSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
-		if err != nil {
-			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-			sendError(w, http.StatusInternalServerError, "Failed to create signer")
-			return
-		}
-		defer solanaSigner.Zeroize()
-
-		txHash, err = s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, solanaSigner, true)
-		if err != nil {
-			failedIntent, _ := s.intentStore.GetIntent(intentID)
-			if failedIntent != nil {
-				failedIntent.RetryCount++
-				if failedIntent.RetryCount >= failedIntent.MaxRetries {
-					s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusPermanentFail, "", err.Error())
-				} else {
-					s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-				}
-			}
-			sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
-			return
-		}
-	} else {
-		ethValue := new(big.Float)
-		ethValue.SetString(intent.Value)
-		weiValue := new(big.Int)
-		ethValue.Mul(ethValue, new(big.Float).SetInt(big.NewInt(1e18)))
-		ethValue.Int(weiValue)
-
-		sufficient, required, err := s.txService.CheckBalanceSufficient(ctx, intent.Chain, intent.From, weiValue, intent.GasLimit)
-		if err != nil {
-			log.Printf("Warning: Balance check failed: %v", err)
-		} else if !sufficient {
-			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", fmt.Sprintf("Insufficient balance: have less than required %s wei", required.String()))
-			sendError(w, http.StatusBadRequest, fmt.Sprintf("Insufficient balance. Required: %s wei", required.String()))
-			return
-		}
-
-		if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
-			sendError(w, http.StatusInternalServerError, "Failed to update intent status")
-			return
-		}
-
-		ecdsaSigner, err := signer.NewECDSASignerFromHex(privateKeyHex)
-		if err != nil {
-			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-			sendError(w, http.StatusInternalServerError, "Failed to create signer")
-			return
-		}
-		defer ecdsaSigner.Zeroize()
-
-		feeSpeed := transaction.FeeSpeedStandard
-		if intent.FeeSpeed == "slow" {
-			feeSpeed = transaction.FeeSpeedSlow
-		} else if intent.FeeSpeed == "fast" {
-			feeSpeed = transaction.FeeSpeedFast
-		}
-
-		txHash, err = s.txService.SendTransactionEIP1559(ctx, intent.Chain, intent.To, weiValue, ecdsaSigner, feeSpeed)
-		if err != nil {
-			failedIntent, _ := s.intentStore.GetIntent(intentID)
-			if failedIntent != nil {
-				failedIntent.RetryCount++
-				if failedIntent.RetryCount >= failedIntent.MaxRetries {
-					s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusPermanentFail, "", err.Error())
-				} else {
-					s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-				}
-			}
-			sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
-			return
-		}
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
+		return
 	}
 
 	s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusSent, txHash, "")
 
-	log.Printf("Executed intent %s, tx hash: %s", intentID, txHash)
+	log.Printf("Executed intent %s, tx hash: %s (token: %s)", intentID, txHash, tokenType)
 	sendJSON(w, http.StatusOK, map[string]string{
 		"tx_hash":   txHash,
 		"intent_id": intentID,
 	})
+}
+
+func (s *Server) executeNativeIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	if intent.Chain == "solana" {
+		return s.executeSolanaNative(ctx, intent, intentID, privateKeyHex)
+	}
+	return s.executeEthereumNative(ctx, intent, intentID, privateKeyHex)
+}
+
+func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	lamports, err := solana.ParseSOL(intent.Value)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Invalid SOL value")
+		return "", err
+	}
+
+	sufficient, _, err := s.txService.CheckBalanceSufficient(ctx, intent.Chain, intent.From, big.NewInt(int64(lamports)), 0)
+	if err != nil {
+		log.Printf("Warning: Balance check failed: %v", err)
+	} else if !sufficient {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Insufficient balance")
+		return "", fmt.Errorf("insufficient balance")
+	}
+
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
+		return "", err
+	}
+
+	solanaSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		return "", err
+	}
+	defer solanaSigner.Zeroize()
+
+	return s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, solanaSigner, true)
+}
+
+func (s *Server) executeEthereumNative(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	ethValue := new(big.Float)
+	ethValue.SetString(intent.Value)
+	weiValue := new(big.Int)
+	ethValue.Mul(ethValue, new(big.Float).SetInt(big.NewInt(1e18)))
+	ethValue.Int(weiValue)
+
+	sufficient, required, err := s.txService.CheckBalanceSufficient(ctx, intent.Chain, intent.From, weiValue, intent.GasLimit)
+	if err != nil {
+		log.Printf("Warning: Balance check failed: %v", err)
+	} else if !sufficient {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", fmt.Sprintf("Insufficient balance: %s wei", required.String()))
+		return "", fmt.Errorf("insufficient balance")
+	}
+
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
+		return "", err
+	}
+
+	ecdsaSigner, err := signer.NewECDSASignerFromHex(privateKeyHex)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		return "", err
+	}
+	defer ecdsaSigner.Zeroize()
+
+	feeSpeed := transaction.FeeSpeedStandard
+	if intent.FeeSpeed == "slow" {
+		feeSpeed = transaction.FeeSpeedSlow
+	} else if intent.FeeSpeed == "fast" {
+		feeSpeed = transaction.FeeSpeedFast
+	}
+
+	return s.txService.SendTransactionEIP1559(ctx, intent.Chain, intent.To, weiValue, ecdsaSigner, feeSpeed)
+}
+
+func (s *Server) executeERC20Intent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	if intent.TokenAddress == "" {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Token address required for ERC-20")
+		return "", fmt.Errorf("token address required")
+	}
+
+	tokenAmount := new(big.Float)
+	tokenAmount.SetString(intent.Value)
+	decimals := big.NewInt(1)
+	for i := 0; i < int(intent.TokenDecimals); i++ {
+		decimals.Mul(decimals, big.NewInt(10))
+	}
+	amount := new(big.Int)
+	tokenAmount.Mul(tokenAmount, new(big.Float).SetInt(decimals))
+	tokenAmount.Int(amount)
+
+	sufficient, tokenBal, ethBal, err := s.txService.CheckTokenBalanceSufficient(ctx, intent.Chain, intent.TokenAddress, intent.From, amount, intent.GasLimit)
+	if err != nil {
+		log.Printf("Warning: Token balance check failed: %v", err)
+	} else if !sufficient {
+		msg := fmt.Sprintf("Insufficient token balance: %s", tokenBal.String())
+		if ethBal != nil && ethBal.Cmp(big.NewInt(0)) == 0 {
+			msg += " (also need ETH for gas)"
+		}
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", msg)
+		return "", fmt.Errorf("insufficient balance")
+	}
+
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
+		return "", err
+	}
+
+	ecdsaSigner, err := signer.NewECDSASignerFromHex(privateKeyHex)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		return "", err
+	}
+	defer ecdsaSigner.Zeroize()
+
+	feeSpeed := transaction.FeeSpeedStandard
+	if intent.FeeSpeed == "slow" {
+		feeSpeed = transaction.FeeSpeedSlow
+	} else if intent.FeeSpeed == "fast" {
+		feeSpeed = transaction.FeeSpeedFast
+	}
+
+	return s.txService.SendERC20Transaction(ctx, intent.Chain, intent.TokenAddress, intent.To, amount, ecdsaSigner, feeSpeed)
+}
+
+func (s *Server) executeSPLIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	if intent.TokenAddress == "" {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Token mint required for SPL")
+		return "", fmt.Errorf("token mint required")
+	}
+
+	amount := new(big.Float)
+	amount.SetString(intent.Value)
+	tokenAmount := new(big.Int)
+	decimals := big.NewInt(1)
+	for i := 0; i < int(intent.TokenDecimals); i++ {
+		decimals.Mul(decimals, big.NewInt(10))
+	}
+	amount.Mul(amount, new(big.Float).SetInt(decimals))
+	amount.Int(tokenAmount)
+
+	sufficient, _, _, err := s.txService.CheckTokenBalanceSufficient(ctx, intent.Chain, intent.TokenAddress, intent.From, tokenAmount, intent.GasLimit)
+	if err != nil {
+		log.Printf("Warning: SPL balance check failed: %v", err)
+	} else if !sufficient {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Insufficient SPL token balance")
+		return "", fmt.Errorf("insufficient balance")
+	}
+
+	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {
+		return "", err
+	}
+
+	solanaSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		return "", err
+	}
+	defer solanaSigner.Zeroize()
+
+	return s.txService.SendSPLTransaction(ctx, intent.Chain, intent.TokenAddress, intent.To, tokenAmount.Uint64(), solanaSigner, true)
 }
 
 func (s *Server) handleRetryIntent(w http.ResponseWriter, r *http.Request) {
