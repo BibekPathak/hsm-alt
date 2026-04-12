@@ -272,7 +272,8 @@ func (s *IntentStore) RetryIntent(id string) (*TransactionIntent, error) {
 		return nil, err
 	}
 
-	if intent.Status != IntentStatusFailed && intent.Status != IntentStatusPermanentFail {
+	// Allow retry from failed, permanent_fail, or stuck "executing" status
+	if intent.Status != IntentStatusFailed && intent.Status != IntentStatusPermanentFail && intent.Status != IntentStatusExecuting {
 		return nil, fmt.Errorf("intent cannot be retried in status: %s", intent.Status)
 	}
 

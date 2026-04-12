@@ -311,6 +311,18 @@ function SendModal({
             </select>
           </div>
           
+          <div>
+            <label className="block text-sm font-medium mb-1">Recipient Address</label>
+            <input
+              type="text"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder={chain === 'solana' ? 'Solana address (base58)' : '0x...'}
+              className="w-full px-3 py-2 border rounded-lg"
+              required
+            />
+          </div>
+          
           {tokenType !== 'native' && (
             <>
               <div>
