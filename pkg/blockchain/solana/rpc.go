@@ -50,11 +50,23 @@ type Blockhash struct {
 	LastValidBlock uint64 `json:"lastValidBlockHeight"`
 }
 
+// Wrapper for getLatestBlockhash response
+type BlockhashResponse struct {
+	Value struct {
+		Blockhash            string `json:"blockhash"`
+		LastValidBlockHeight uint64 `json:"lastValidBlockHeight"`
+	} `json:"value"`
+	Context struct {
+		Slot       uint64 `json:"slot"`
+		ApiVersion string `json:"apiVersion"`
+	} `json:"context"`
+}
+
 type SignatureStatus struct {
-	Slot          uint64      `json:"slot"`
-	Confirmations uint64      `json:"confirmations,string"`
-	Err           interface{} `json:"err"`
-	Status        string      `json:"status"`
+	Slot               uint64      `json:"slot"`
+	Confirmations      *uint64     `json:"confirmations"`
+	Err                interface{} `json:"err"`
+	ConfirmationStatus string      `json:"confirmationStatus"`
 }
 
 type GetBalanceResult struct {
@@ -110,28 +122,37 @@ func (c *RPCClient) GetLatestBlockhash(ctx context.Context) (*Blockhash, error) 
 		return nil, fmt.Errorf("failed to get blockhash: %w", err)
 	}
 
-	var blockhash Blockhash
-	if err := json.Unmarshal(result, &blockhash); err != nil {
+	var blockhashResp BlockhashResponse
+	if err := json.Unmarshal(result, &blockhashResp); err != nil {
 		return nil, fmt.Errorf("failed to parse blockhash: %w", err)
 	}
 
-	return &blockhash, nil
+	if blockhashResp.Value.Blockhash == "" {
+		return nil, fmt.Errorf("blockhash is empty")
+	}
+
+	blockhash := &Blockhash{
+		Blockhash:      blockhashResp.Value.Blockhash,
+		LastValidBlock: blockhashResp.Value.LastValidBlockHeight,
+	}
+
+	return blockhash, nil
 }
 
 func (c *RPCClient) SendTransaction(ctx context.Context, signedTx []byte) (string, error) {
-	txBase64 := base64.StdEncoding.EncodeToString(signedTx)
+	txBase58 := base58.Encode(signedTx)
 
-	result, err := c.call(ctx, "sendTransaction", txBase64)
+	result, err := c.call(ctx, "sendTransaction", txBase58)
 	if err != nil {
 		return "", fmt.Errorf("failed to send transaction: %w", err)
 	}
 
-	var sendResult SendTransactionResult
-	if err := json.Unmarshal(result, &sendResult); err != nil {
+	var signature string
+	if err := json.Unmarshal(result, &signature); err != nil {
 		return "", fmt.Errorf("failed to parse send result: %w", err)
 	}
 
-	return sendResult.Signature, nil
+	return signature, nil
 }
 
 func (c *RPCClient) GetSignatureStatus(ctx context.Context, signature string) (*SignatureStatus, error) {
@@ -175,7 +196,7 @@ func (c *RPCClient) WaitForConfirmation(ctx context.Context, signature string) e
 			if status.Err != nil {
 				return fmt.Errorf("transaction failed: %v", status.Err)
 			}
-			if status.Status == "confirmed" || status.Status == "finalized" {
+			if status.ConfirmationStatus == "confirmed" || status.ConfirmationStatus == "finalized" {
 				return nil
 			}
 		}

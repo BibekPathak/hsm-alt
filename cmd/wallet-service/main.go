@@ -870,7 +870,7 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	_, privateKeyHex, err := s.keyStore.LoadKey(intent.WalletID, intent.Chain, 0, s.password)
 	if err != nil {
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-		sendError(w, http.StatusInternalServerError, "Failed to load key")
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load key: %v", err))
 		return
 	}
 
@@ -883,7 +883,6 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 		tokenType = "native"
 	}
 
-	// Execute based on token type
 	switch {
 	case tokenType == "spl":
 		txHash, err = s.executeSPLIntent(ctx, intent, intentID, privateKeyHex)
@@ -923,8 +922,9 @@ func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.Transac
 
 	sufficient, _, err := s.txService.CheckBalanceSufficient(ctx, intent.Chain, intent.From, big.NewInt(int64(lamports)), 0)
 	if err != nil {
-		log.Printf("Warning: Balance check failed: %v", err)
-	} else if !sufficient {
+		return "", err
+	}
+	if !sufficient {
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Insufficient balance")
 		return "", fmt.Errorf("insufficient balance")
 	}
@@ -940,7 +940,13 @@ func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.Transac
 	}
 	defer solanaSigner.Zeroize()
 
-	return s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, solanaSigner, true)
+	txHash, err := s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, solanaSigner, true)
+	if err != nil {
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+		return "", err
+	}
+
+	return txHash, nil
 }
 
 func (s *Server) executeEthereumNative(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {

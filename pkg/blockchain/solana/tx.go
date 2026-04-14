@@ -91,58 +91,91 @@ func (b *TxBuilder) createTransferMessage(from, to string, lamports uint64, rece
 }
 
 func (b *TxBuilder) createTransferInstructionData(lamports uint64) []byte {
-	data := make([]byte, 4+binary.MaxVarintLen64)
-	binary.LittleEndian.PutUint32(data[0:4], 2)
-
-	n := binary.PutUvarint(data[4:], lamports)
-	return data[:4+n]
+	// System program transfer instruction: [instruction_index(4 bytes)][lamports(8 bytes)]
+	data := make([]byte, 12)
+	binary.LittleEndian.PutUint32(data[0:4], 2)         // Transfer instruction index
+	binary.LittleEndian.PutUint64(data[4:12], lamports) // Amount in lamports
+	return data
 }
 
+// serializeMessage creates the unsigned message that needs to be signed
 func (b *TxBuilder) serializeMessage(msg *Message) ([]byte, error) {
 	var buf bytes.Buffer
 
-	numSignatures := byte(len(msg.AccountKeys[:msg.Header.NumRequiredSignatures]))
-	buf.WriteByte(numSignatures)
-
-	for i := 0; i < int(numSignatures); i++ {
-		sig := make([]byte, 64)
-		buf.Write(sig)
-	}
-
+	// Message header
 	buf.WriteByte(byte(msg.Header.NumRequiredSignatures))
 	buf.WriteByte(msg.Header.NumReadonlySignedAccounts)
 	buf.WriteByte(msg.Header.NumReadonlyUnsignedAccounts)
 
-	numAccountKeys := byte(len(msg.AccountKeys))
-	buf.WriteByte(numAccountKeys)
+	// Account keys (compact array format)
+	if err := b.writeCompactArray(&buf, len(msg.AccountKeys)); err != nil {
+		return nil, fmt.Errorf("failed to write account keys length: %w", err)
+	}
 	for _, key := range msg.AccountKeys {
 		decoded, err := base58.Decode(key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode account key: %w", err)
 		}
+		if len(decoded) != 32 {
+			return nil, fmt.Errorf("account key must be 32 bytes, got %d", len(decoded))
+		}
 		buf.Write(decoded)
 	}
 
+	// Recent blockhash
 	blockhash, err := base58.Decode(msg.RecentBlockhash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode blockhash: %w", err)
 	}
+	if len(blockhash) != 32 {
+		return nil, fmt.Errorf("blockhash must be 32 bytes, got %d", len(blockhash))
+	}
 	buf.Write(blockhash)
 
-	numInstructions := byte(len(msg.Instructions))
-	buf.WriteByte(numInstructions)
+	// Instructions (compact array format)
+	if err := b.writeCompactArray(&buf, len(msg.Instructions)); err != nil {
+		return nil, fmt.Errorf("failed to write instructions length: %w", err)
+	}
 
 	for _, inst := range msg.Instructions {
 		buf.WriteByte(inst.ProgramIDIndex)
-		numAccounts := byte(len(inst.Accounts))
-		buf.WriteByte(numAccounts)
+
+		// Accounts (compact array format)
+		if err := b.writeCompactArray(&buf, len(inst.Accounts)); err != nil {
+			return nil, fmt.Errorf("failed to write instruction accounts length: %w", err)
+		}
 		buf.Write(inst.Accounts)
-		dataLen := binary.PutUvarint(make([]byte, 0, 4), uint64(len(inst.Data)))
-		buf.WriteByte(byte(dataLen))
+
+		// Data (compact array format)
+		if err := b.writeCompactArray(&buf, len(inst.Data)); err != nil {
+			return nil, fmt.Errorf("failed to write instruction data length: %w", err)
+		}
 		buf.Write(inst.Data)
 	}
 
 	return buf.Bytes(), nil
+}
+
+// writeCompactArray writes length in Solana's compact-u16 format
+func (b *TxBuilder) writeCompactArray(buf *bytes.Buffer, length int) error {
+	if length < 0 {
+		return fmt.Errorf("length cannot be negative: %d", length)
+	}
+
+	if length <= 127 {
+		buf.WriteByte(byte(length))
+	} else if length <= 16383 {
+		buf.WriteByte(byte(length) | 0x80)
+		buf.WriteByte(byte(length >> 7))
+	} else if length <= 2097151 {
+		buf.WriteByte(byte(length) | 0x80)
+		buf.WriteByte(byte(length>>7) | 0x80)
+		buf.WriteByte(byte(length >> 14))
+	} else {
+		return fmt.Errorf("compact array length too large: %d", length)
+	}
+
+	return nil
 }
 
 func (b *TxBuilder) AddSignature(unsignedTx []byte, signature []byte) ([]byte, error) {
@@ -150,14 +183,22 @@ func (b *TxBuilder) AddSignature(unsignedTx []byte, signature []byte) ([]byte, e
 		return nil, fmt.Errorf("signature must be 64 bytes, got %d", len(signature))
 	}
 
+	// Solana wire format: [compact_array_len][signature1...signatureN][message]
 	var buf bytes.Buffer
+
+	// Write number of signatures using compact array format
+	if err := b.writeCompactArray(&buf, 1); err != nil {
+		return nil, fmt.Errorf("failed to write signature count: %w", err)
+	}
+
+	// Write the signature (exactly 64 bytes)
+	if len(signature) != 64 {
+		return nil, fmt.Errorf("signature must be exactly 64 bytes, got %d", len(signature))
+	}
+	buf.Write(signature)
+
+	// Write the unsigned message
 	buf.Write(unsignedTx)
-
-	buf.WriteByte(1)
-
-	sigBuf := make([]byte, 64)
-	copy(sigBuf, signature)
-	buf.Write(sigBuf)
 
 	return buf.Bytes(), nil
 }
@@ -165,47 +206,25 @@ func (b *TxBuilder) AddSignature(unsignedTx []byte, signature []byte) ([]byte, e
 func (b *TxBuilder) SerializeWithSignatures(msg *Message, signatures [][]byte) ([]byte, error) {
 	var buf bytes.Buffer
 
-	numSignatures := byte(len(signatures))
-	buf.WriteByte(numSignatures)
-
-	for _, sig := range signatures {
-		sig64 := make([]byte, 64)
-		copy(sig64, sig)
-		buf.Write(sig64)
+	// Write signature count using compact array format
+	if err := b.writeCompactArray(&buf, len(signatures)); err != nil {
+		return nil, fmt.Errorf("failed to write signature count: %w", err)
 	}
 
-	buf.WriteByte(byte(msg.Header.NumRequiredSignatures))
-	buf.WriteByte(msg.Header.NumReadonlySignedAccounts)
-	buf.WriteByte(msg.Header.NumReadonlyUnsignedAccounts)
-
-	numAccountKeys := byte(len(msg.AccountKeys))
-	buf.WriteByte(numAccountKeys)
-	for _, key := range msg.AccountKeys {
-		decoded, err := base58.Decode(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode account key: %w", err)
+	// Write all signatures (each must be exactly 64 bytes)
+	for i, sig := range signatures {
+		if len(sig) != 64 {
+			return nil, fmt.Errorf("signature %d must be exactly 64 bytes, got %d", i, len(sig))
 		}
-		buf.Write(decoded)
+		buf.Write(sig)
 	}
 
-	blockhash, err := base58.Decode(msg.RecentBlockhash)
+	// Serialize the message
+	msgBytes, err := b.serializeMessage(msg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode blockhash: %w", err)
+		return nil, fmt.Errorf("failed to serialize message: %w", err)
 	}
-	buf.Write(blockhash)
-
-	numInstructions := byte(len(msg.Instructions))
-	buf.WriteByte(numInstructions)
-
-	for _, inst := range msg.Instructions {
-		buf.WriteByte(inst.ProgramIDIndex)
-		numAccounts := byte(len(inst.Accounts))
-		buf.WriteByte(numAccounts)
-		buf.Write(inst.Accounts)
-		dataLen := binary.PutUvarint(make([]byte, 0, 4), uint64(len(inst.Data)))
-		buf.WriteByte(byte(dataLen))
-		buf.Write(inst.Data)
-	}
+	buf.Write(msgBytes)
 
 	return buf.Bytes(), nil
 }
