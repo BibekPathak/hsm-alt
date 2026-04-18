@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -867,12 +868,15 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.walletLocks.Delete(lockKey)
 
+	log.Printf("[EXECUTE] Loading key for intent %s, wallet %s, chain %s", intentID, intent.WalletID, intent.Chain)
 	_, privateKeyHex, err := s.keyStore.LoadKey(intent.WalletID, intent.Chain, 0, s.password)
 	if err != nil {
+		log.Printf("[EXECUTE] ERROR: LoadKey failed: %v", err)
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load key: %v", err))
 		return
 	}
+	log.Printf("[EXECUTE] Key loaded successfully, length: %d", len(privateKeyHex))
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.lockTimeout)
 	defer cancel()
@@ -882,20 +886,26 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	if tokenType == "" {
 		tokenType = "native"
 	}
+	log.Printf("[EXECUTE] Executing for chain=%s, tokenType=%s", intent.Chain, tokenType)
 
 	switch {
 	case tokenType == "spl":
+		log.Printf("[EXECUTE] Calling executeSPLIntent...")
 		txHash, err = s.executeSPLIntent(ctx, intent, intentID, privateKeyHex)
 	case tokenType == "erc20":
+		log.Printf("[EXECUTE] Calling executeERC20Intent...")
 		txHash, err = s.executeERC20Intent(ctx, intent, intentID, privateKeyHex)
 	default:
+		log.Printf("[EXECUTE] Calling executeNativeIntent...")
 		txHash, err = s.executeNativeIntent(ctx, intent, intentID, privateKeyHex)
 	}
 
 	if err != nil {
+		log.Printf("[EXECUTE] ERROR: Execution failed: %v", err)
 		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to send tx: %v", err))
 		return
 	}
+	log.Printf("[EXECUTE] Execution completed successfully, txHash: %s", txHash)
 
 	s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusSent, txHash, "")
 
@@ -1035,27 +1045,51 @@ func (s *Server) executeERC20Intent(ctx context.Context, intent *wallet.Transact
 }
 
 func (s *Server) executeSPLIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+	// Trim whitespace from token address to handle copy/paste errors
+	intent.TokenAddress = strings.TrimSpace(intent.TokenAddress)
+
 	if intent.TokenAddress == "" {
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Token mint required for SPL")
-		return "", fmt.Errorf("token mint required")
+		return "", fmt.Errorf("token mint required for SPL")
+	}
+
+	decimals := big.NewInt(1)
+	for i := 0; i < int(intent.TokenDecimals); i++ {
+		decimals.Mul(decimals, big.NewInt(10))
 	}
 
 	amount := new(big.Float)
 	amount.SetString(intent.Value)
 	tokenAmount := new(big.Int)
-	decimals := big.NewInt(1)
-	for i := 0; i < int(intent.TokenDecimals); i++ {
-		decimals.Mul(decimals, big.NewInt(10))
-	}
 	amount.Mul(amount, new(big.Float).SetInt(decimals))
 	amount.Int(tokenAmount)
 
-	sufficient, _, _, err := s.txService.CheckTokenBalanceSufficient(ctx, intent.Chain, intent.TokenAddress, intent.From, tokenAmount, intent.GasLimit)
+	log.Printf("[SPL-EXEC] Checking balance for mint=%s, owner=%s, amount=%s (raw=%s)",
+		intent.TokenAddress, intent.From, tokenAmount.String(), intent.Value)
+
+	sufficient, balance, _, err := s.txService.CheckTokenBalanceSufficient(ctx, intent.Chain, intent.TokenAddress, intent.From, tokenAmount, intent.GasLimit)
 	if err != nil {
-		log.Printf("Warning: SPL balance check failed: %v", err)
-	} else if !sufficient {
-		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Insufficient SPL token balance")
-		return "", fmt.Errorf("insufficient balance")
+		log.Printf("[SPL-EXEC] ERROR: Balance check failed: %v", err)
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", fmt.Sprintf("Token balance check failed: %v", err))
+		return "", fmt.Errorf("token balance check failed: %w", err)
+	}
+
+	log.Printf("[SPL-EXEC] Balance check result: sufficient=%v, balance=%s, required=%s",
+		sufficient, balance.String(), tokenAmount.String())
+
+	if !sufficient {
+		// Convert raw balance to human-readable format
+		balanceFloat := new(big.Float).SetInt(balance)
+		balanceFloat.Quo(balanceFloat, new(big.Float).SetInt(decimals))
+
+		amountFloat := new(big.Float).SetInt(tokenAmount)
+		amountFloat.Quo(amountFloat, new(big.Float).SetInt(decimals))
+
+		msg := fmt.Sprintf("Insufficient %s balance: have %s, need %s. Get test tokens from Solana devnet faucet.",
+			intent.TokenSymbol, balanceFloat.Text('f', int(intent.TokenDecimals)), amountFloat.Text('f', int(intent.TokenDecimals)))
+		log.Printf("[SPL-EXEC] %s", msg)
+		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", msg)
+		return "", fmt.Errorf("insufficient SPL token balance")
 	}
 
 	if err := s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusExecuting, "", ""); err != nil {

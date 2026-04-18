@@ -1,0 +1,30 @@
+# MPC Node Configuration Example
+# Copy to ~/.hsm/mpc/node_1/config.yaml and modify as needed
+
+# Node identification
+node_id: 1
+cluster_id: "wallet_abc123"
+
+# MPC threshold configuration (2-of-3 for MVP)
+threshold: 2
+total_nodes: 3
+
+# Network addresses
+listen_addr: "localhost:8001"
+
+# Enclave HTTP server address (for Rust MPC enclave)
+enclave_addr: "localhost:7002"
+
+# Peer nodes (format: node_id:host:port)
+peer_addrs:
+  2: "localhost:8002"
+  3: "localhost:8003"
+
+# TLS settings (disable for local dev)
+tls_enabled: false
+
+# Metrics/observability
+metrics_addr: "localhost:9090"
+
+# Share file path (auto-generated from node_id if not set)
+# share_file: "~/.hsm/mpc/node_1/share.json"

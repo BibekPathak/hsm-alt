@@ -3,6 +3,7 @@ package transaction
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -204,35 +205,61 @@ func (s *Service) SendERC20Transaction(ctx context.Context, chain, tokenContract
 }
 
 func (s *Service) SendSPLTransaction(ctx context.Context, chain, mint, to string, amount uint64, solanaSigner *signer.SolanaSigner, confirm bool) (string, error) {
+	log.Printf(`[SPL-SERVICE] SendSPLTransaction: chain=%s, mint=%s, to=%s, amount=%d`, chain, mint, to, amount)
+
 	builder, ok := s.solanaBuilders[chain]
 	if !ok {
-		return "", fmt.Errorf("unsupported chain: %s", chain)
+		return ``, fmt.Errorf(`unsupported chain: %s`, chain)
 	}
 
-	unsignedTx, err := builder.BuildSPLTransferTx(ctx, solanaSigner.Address(), to, mint, amount)
+	// First find the actual source token account by querying all token accounts
+	sourceATA, err := builder.FindSPLTokenAccount(ctx, solanaSigner.Address(), mint)
 	if err != nil {
-		return "", fmt.Errorf("failed to build spl tx: %w", err)
+		log.Printf(`[SPL-SERVICE] WARNING: failed to find source ATA: %v, will use derived`, err)
+		sourceATA = "" // Will fallback to derived
+	} else {
+		log.Printf(`[SPL-SERVICE] Found source token account: %s`, sourceATA)
 	}
 
+	log.Printf(`[SPL-SERVICE] Building SPL transfer transaction...`)
+	unsignedTx, err := builder.BuildSPLTransferTx(ctx, solanaSigner.Address(), to, mint, amount, sourceATA)
+	if err != nil {
+		log.Printf(`[SPL-SERVICE] ERROR: BuildSPLTransferTx failed: %v`, err)
+		return ``, fmt.Errorf(`failed to build spl tx: %w`, err)
+	}
+	log.Printf(`[SPL-SERVICE] Transaction built: %d bytes`, len(unsignedTx))
+
+	log.Printf(`[SPL-SERVICE] Signing transaction...`)
 	signature, err := solanaSigner.SignTransaction(unsignedTx)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign tx: %w", err)
+		log.Printf(`[SPL-SERVICE] ERROR: SignTransaction failed: %v`, err)
+		return ``, fmt.Errorf(`failed to sign tx: %w`, err)
 	}
+	log.Printf(`[SPL-SERVICE] Signature: %x`, signature[:8])
 
+	log.Printf(`[SPL-SERVICE] Adding signature to transaction...`)
 	signedTx, err := builder.AddSignature(unsignedTx, signature)
 	if err != nil {
-		return "", fmt.Errorf("failed to add signature: %w", err)
+		log.Printf(`[SPL-SERVICE] ERROR: AddSignature failed: %v`, err)
+		return ``, fmt.Errorf(`failed to add signature: %w`, err)
 	}
+	log.Printf(`[SPL-SERVICE] Signed transaction: %d bytes`, len(signedTx))
 
+	log.Printf(`[SPL-SERVICE] Broadcasting transaction...`)
 	txHash, err := builder.SendTransaction(ctx, signedTx)
 	if err != nil {
-		return "", fmt.Errorf("failed to broadcast tx: %w", err)
+		log.Printf(`[SPL-SERVICE] ERROR: SendTransaction failed: %v`, err)
+		return ``, fmt.Errorf(`failed to broadcast tx: %w`, err)
 	}
+	log.Printf(`[SPL-SERVICE] Transaction broadcasted: %s`, txHash)
 
 	if confirm {
+		log.Printf(`[SPL-SERVICE] Waiting for confirmation...`)
 		if err := builder.ConfirmTransaction(ctx, txHash); err != nil {
-			return txHash, fmt.Errorf("tx sent but confirmation failed: %w", err)
+			log.Printf(`[SPL-SERVICE] ERROR: ConfirmTransaction failed: %v`, err)
+			return txHash, fmt.Errorf(`tx sent but confirmation failed: %w`, err)
 		}
+		log.Printf(`[SPL-SERVICE] Transaction confirmed!`)
 	}
 
 	return txHash, nil

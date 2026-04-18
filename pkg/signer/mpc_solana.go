@@ -1,153 +1,150 @@
 package signer
 
 import (
-	"errors"
+	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/mr-tron/base58"
 )
 
 type MPCSolanaSigner struct {
-	address      string
-	publicKey    []byte
-	enclaveAddr  string
-	threshold    int
-	participants []uint32
+	mu        sync.RWMutex
+	nodeID    uint32
+	clusterID string
+	publicKey ed25519.PublicKey
+	share     []byte
+	connected bool
 }
 
-func NewMPCSolanaSigner() *MPCSolanaSigner {
+func NewMPCSolanaSigner(nodeID uint32, clusterID string) (*MPCSolanaSigner, error) {
 	return &MPCSolanaSigner{
-		address:      "",
-		publicKey:    nil,
-		enclaveAddr:  "localhost:7002",
-		threshold:    0,
-		participants: []uint32{},
-	}
+		nodeID:    nodeID,
+		clusterID: clusterID,
+		connected: false,
+	}, nil
 }
 
-func NewMPCSolanaSignerWithConfig(enclaveAddr string, threshold int, participants []uint32) *MPCSolanaSigner {
-	return &MPCSolanaSigner{
-		address:      "",
-		publicKey:    nil,
-		enclaveAddr:  enclaveAddr,
-		threshold:    threshold,
-		participants: participants,
-	}
+func (s *MPCSolanaSigner) SetShareAndPublicKey(share, publicKey []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.share = make([]byte, len(share))
+	copy(s.share, share)
+	s.publicKey = make([]byte, len(publicKey))
+	copy(s.publicKey, publicKey)
+	s.connected = true
+}
+
+func (s *MPCSolanaSigner) IsConnected() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.connected
+}
+
+func (s *MPCSolanaSigner) SignTransaction(unsignedTx []byte) ([]byte, error) {
+	return s.SignMessage(unsignedTx)
 }
 
 func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
-	return nil, errors.New("MPC Solana signer not implemented - placeholder for threshold signatures. This will integrate with your Rust MPC enclave using FROST-Ed25519")
-}
+	s.mu.RLock()
+	if !s.connected {
+		s.mu.RUnlock()
+		return nil, fmt.Errorf("MPC signer not initialized: no key share loaded. Run DKG first to generate key shares.")
+	}
+	s.mu.RUnlock()
 
-func (s *MPCSolanaSigner) SignTransaction(txMessage []byte) ([]byte, error) {
-	return nil, errors.New("MPC Solana signer not implemented - placeholder for threshold signatures")
+	return nil, fmt.Errorf("MPC signing requires multi-node coordination. Use SignOrchestrator to coordinate signing across threshold nodes")
 }
 
 func (s *MPCSolanaSigner) Address() string {
-	if s.address != "" {
-		return s.address
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.publicKey == nil {
+		return ""
 	}
-	return "MPC_SOLANA_PLACEHOLDER"
-}
-
-func (s *MPCSolanaSigner) EthereumAddress() string {
-	return s.Address()
+	return base58.Encode(s.publicKey)
 }
 
 func (s *MPCSolanaSigner) PublicKey() []byte {
-	if s.publicKey != nil {
-		return s.publicKey
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.publicKey == nil {
+		return nil
 	}
-	return []byte("MPC_SOLANA_PLACEHOLDER_PUBLIC_KEY")
+	result := make([]byte, len(s.publicKey))
+	copy(result, s.publicKey)
+	return result
 }
 
 func (s *MPCSolanaSigner) CompressedPublicKey() []byte {
 	return s.PublicKey()
 }
 
+func (s *MPCSolanaSigner) PublicKeyHex() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.publicKey == nil {
+		return ""
+	}
+	return hex.EncodeToString(s.publicKey)
+}
+
+func (s *MPCSolanaSigner) PrivateKeyHex() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.share == nil {
+		return ""
+	}
+	return hex.EncodeToString(s.share)
+}
+
+func (s *MPCSolanaSigner) GetShare() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.share == nil {
+		return nil
+	}
+	result := make([]byte, len(s.share))
+	copy(result, s.share)
+	return result
+}
+
 func (s *MPCSolanaSigner) Zeroize() {
-	s.address = ""
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.share != nil {
+		for i := range s.share {
+			s.share[i] = 0
+		}
+		s.share = nil
+	}
 	s.publicKey = nil
+	s.connected = false
 }
 
 func (s *MPCSolanaSigner) IsZeroized() bool {
-	return s.publicKey == nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.share == nil
 }
 
 func (s *MPCSolanaSigner) Type() string {
-	return "mpc-solana"
+	return "mpc_solana"
 }
 
-func (s *MPCSolanaSigner) Sign(tx *Transaction) ([]byte, error) {
-	return nil, errors.New("MPC signer not implemented - use SignMessage for threshold signing")
+func (s *MPCSolanaSigner) EthereumAddress() string {
+	return s.Address()
 }
 
-func (s *MPCSolanaSigner) SetAddress(address string) {
-	s.address = address
+func (s *MPCSolanaSigner) GetPrivateKey() ed25519.PrivateKey {
+	return nil
 }
 
-func (s *MPCSolanaSigner) SetPublicKey(pubKey []byte) {
-	s.publicKey = pubKey
+func (s *MPCSolanaSigner) GetNodeID() uint32 {
+	return s.nodeID
 }
 
-func (s *MPCSolanaSigner) GetEnclaveAddr() string {
-	return s.enclaveAddr
-}
-
-func (s *MPCSolanaSigner) GetThreshold() int {
-	return s.threshold
-}
-
-func (s *MPCSolanaSigner) GetParticipants() []uint32 {
-	return s.participants
-}
-
-type MPCSolanaConfig struct {
-	EnclaveAddr  string
-	Threshold    int
-	Participants []uint32
-	PublicKey    []byte
-}
-
-func NewMPCSolanaSignerFromConfig(cfg MPCSolanaConfig) *MPCSolanaSigner {
-	addr := ""
-	if len(cfg.PublicKey) == 32 {
-		addr = base58.Encode(cfg.PublicKey)
-	}
-	return &MPCSolanaSigner{
-		address:      addr,
-		publicKey:    cfg.PublicKey,
-		enclaveAddr:  cfg.EnclaveAddr,
-		threshold:    cfg.Threshold,
-		participants: cfg.Participants,
-	}
-}
-
-type MPCSignRequest struct {
-	Message      []byte
-	SessionID    string
-	Threshold    int
-	Participants []uint32
-}
-
-type MPCSignResponse struct {
-	Signature []byte
-	SessionID string
-}
-
-func (s *MPCSolanaSigner) InitiateSigningSession(message []byte, sessionID string) (*MPCSignRequest, error) {
-	if s.threshold == 0 || len(s.participants) == 0 {
-		return nil, fmt.Errorf("MPC signer not configured - threshold and participants required")
-	}
-
-	return &MPCSignRequest{
-		Message:      message,
-		SessionID:    sessionID,
-		Threshold:    s.threshold,
-		Participants: s.participants,
-	}, nil
-}
-
-func VerifyMPCSolanaSignature(pubKey []byte, message []byte, signature []byte) bool {
-	return false
+func (s *MPCSolanaSigner) GetClusterID() string {
+	return s.clusterID
 }

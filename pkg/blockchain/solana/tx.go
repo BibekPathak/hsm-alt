@@ -3,10 +3,10 @@ package solana
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/mr-tron/base58"
 )
@@ -165,11 +165,14 @@ func (b *TxBuilder) writeCompactArray(buf *bytes.Buffer, length int) error {
 	if length <= 127 {
 		buf.WriteByte(byte(length))
 	} else if length <= 16383 {
-		buf.WriteByte(byte(length) | 0x80)
+		lower7Bits := byte(length & 0x7f)
+		buf.WriteByte(lower7Bits | 0x80)
 		buf.WriteByte(byte(length >> 7))
 	} else if length <= 2097151 {
-		buf.WriteByte(byte(length) | 0x80)
-		buf.WriteByte(byte(length>>7) | 0x80)
+		lower7Bits := byte(length & 0x7f)
+		next7Bits := byte((length >> 7) & 0x7f)
+		buf.WriteByte(lower7Bits | 0x80)
+		buf.WriteByte(next7Bits | 0x80)
 		buf.WriteByte(byte(length >> 14))
 	} else {
 		return fmt.Errorf("compact array length too large: %d", length)
@@ -229,10 +232,6 @@ func (b *TxBuilder) SerializeWithSignatures(msg *Message, signatures [][]byte) (
 	return buf.Bytes(), nil
 }
 
-func (b *TxBuilder) SendTransaction(ctx context.Context, signedTx []byte) (string, error) {
-	return b.rpcClient.SendTransaction(ctx, signedTx)
-}
-
 func (b *TxBuilder) GetBalance(ctx context.Context, address string) (uint64, error) {
 	return b.rpcClient.GetBalance(ctx, address)
 }
@@ -276,6 +275,10 @@ func (b *TxBuilder) ConfirmTransaction(ctx context.Context, signature string) er
 	return b.rpcClient.WaitForConfirmation(ctx, signature)
 }
 
+func (b *TxBuilder) SendTransaction(ctx context.Context, signedTx []byte) (string, error) {
+	return b.rpcClient.SendTransaction(ctx, signedTx)
+}
+
 func (b *TxBuilder) GetBlockhash(ctx context.Context) (string, error) {
 	blockhash, err := b.rpcClient.GetLatestBlockhash(ctx)
 	if err != nil {
@@ -294,40 +297,34 @@ func (b *TxBuilder) BuildTransferTxWithBlockhash(ctx context.Context, from, to s
 }
 
 // GetAssociatedTokenAddress derives the ATA for a wallet and token mint
+// NOTE: This is a placeholder. In production, you should use the proper PDA derivation
+// or query the RPC for the actual token accounts
 func GetAssociatedTokenAddress(owner, mint string) (string, error) {
-	ownerPubkey, err := base58.Decode(owner)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode owner: %w", err)
+	if owner == "" {
+		return "", fmt.Errorf("owner address cannot be empty")
+	}
+	if mint == "" {
+		return "", fmt.Errorf("mint address cannot be empty")
 	}
 
-	mintPubkey, err := base58.Decode(mint)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode mint: %w", err)
-	}
-
-	programID, _ := base58.Decode(AssociatedTokenPID)
-
-	// Simple hash for ATA derivation: owner || mint || program
-	ataData := append(ownerPubkey[:32], mintPubkey[:32]...)
-	ataData = append(ataData, programID[:32]...)
-
-	// Use hash as deterministic seed
-	hasher := sha256.New()
-	hasher.Write(ataData)
-	hash := hasher.Sum(nil)
-
-	// Take first 32 bytes and encode as address
-	ataBytes := append([]byte{0x03}, hash[:31]...) // Version byte + 31 hash bytes
-
-	return base58.Encode(ataBytes), nil
+	// For now, return empty string to force lookup via RPC
+	// The actual ATA derivation requires complex Ed25519 curve checks
+	// that are better handled by the Solana SDK
+	log.Printf("[ATA] Skipping local derivation, will use RPC to find token accounts")
+	return "", nil
 }
 
 // GetTokenAccountBalance gets the SPL token balance for an ATA
 func (b *TxBuilder) GetTokenAccountBalance(ctx context.Context, ata string) (uint64, error) {
+	log.Printf("[SPL] GetTokenAccountBalance: calling getTokenAccountBalance for ATA=%s", ata)
+
 	result, err := b.rpcClient.call(ctx, "getTokenAccountBalance", ata)
 	if err != nil {
+		log.Printf("[SPL] GetTokenAccountBalance ERROR: RPC call failed: %v", err)
 		return 0, fmt.Errorf("failed to get token balance: %w", err)
 	}
+
+	log.Printf("[SPL] GetTokenAccountBalance: response=%s", string(result))
 
 	var response struct {
 		Value struct {
@@ -336,101 +333,242 @@ func (b *TxBuilder) GetTokenAccountBalance(ctx context.Context, ata string) (uin
 		} `json:"value"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil {
+		log.Printf("[SPL] GetTokenAccountBalance ERROR: parse failed: %v", err)
 		return 0, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	var amount uint64
 	fmt.Sscanf(response.Value.Amount, "%d", &amount)
+	log.Printf("[SPL] GetTokenAccountBalance: parsed amount=%d (raw)", amount)
 	return amount, nil
 }
 
 // GetTokenBalance gets token balance for an owner (finds ATA first)
 func (b *TxBuilder) GetTokenBalance(ctx context.Context, owner, mint string) (uint64, error) {
+	log.Printf("[SPL] GetTokenBalance: querying all token accounts for owner=%s, mint=%s", owner, mint)
+
 	ata, err := GetAssociatedTokenAddress(owner, mint)
 	if err != nil {
+		log.Printf("[SPL] GetTokenBalance ERROR: ATA derivation failed: %v", err)
 		return 0, err
 	}
+	log.Printf("[SPL] GetTokenBalance: derived ATA=%s", ata)
 
-	// Check if ATA exists
+	// First try with the derived ATA
 	exists, err := b.rpcClient.call(ctx, "getAccountInfo", ata, map[string]interface{}{"encoding": "base64"})
 	if err != nil {
-		return 0, nil // Account doesn't exist = 0 balance
+		log.Printf("[SPL] GetTokenBalance: error checking derived ATA: %v", err)
 	}
 
-	var response struct {
-		Value interface{} `json:"value"`
+	if exists != nil {
+		var response struct {
+			Value interface{} `json:"value"`
+		}
+		json.Unmarshal(exists, &response)
+		if response.Value != nil {
+			log.Printf("[SPL] GetTokenBalance: derived ATA exists!")
+			return b.GetTokenAccountBalance(ctx, ata)
+		}
 	}
-	if err := json.Unmarshal(exists, &response); err != nil {
+
+	// If derived ATA doesn't exist, try to find the actual account by mint
+	log.Printf("[SPL] GetTokenBalance: derived ATA not found, searching via getTokenAccountsByOwner...")
+	result, err := b.rpcClient.call(ctx, "getTokenAccountsByOwner", owner, map[string]interface{}{
+		"programId": TokenProgramID,
+	}, map[string]interface{}{
+		"encoding": "jsonParsed",
+	})
+	if err != nil {
+		log.Printf("[SPL] GetTokenBalance ERROR: failed to query token accounts: %v", err)
 		return 0, nil
 	}
 
-	if response.Value == nil {
-		return 0, nil // ATA doesn't exist
+	log.Printf("[SPL] GetTokenBalance: getTokenAccountsByOwner response: %s", string(result))
+
+	type TokenAccountInfo struct {
+		Mint        string `json:"mint"`
+		TokenAmount struct {
+			Amount string `json:"amount"`
+		} `json:"tokenAmount"`
+	}
+	type TokenAccount struct {
+		Pubkey  string `json:"pubkey"`
+		Account struct {
+			Data struct {
+				Parsed struct {
+					Info TokenAccountInfo `json:"info"`
+				} `json:"parsed"`
+			} `json:"data"`
+		} `json:"account"`
+	}
+	type RPCResponse struct {
+		Value []TokenAccount `json:"value"`
 	}
 
-	return b.GetTokenAccountBalance(ctx, ata)
+	var tokenAccounts RPCResponse
+	if err := json.Unmarshal(result, &tokenAccounts); err != nil {
+		log.Printf("[SPL] GetTokenBalance ERROR: parse failed: %v", err)
+		return 0, nil
+	}
+
+	log.Printf("[SPL] GetTokenBalance: found %d token accounts", len(tokenAccounts.Value))
+	for i, acc := range tokenAccounts.Value {
+		amountStr := acc.Account.Data.Parsed.Info.TokenAmount.Amount
+		log.Printf("[SPL] GetTokenBalance: account[%d] pubkey=%s, mint=%s, amount=%s",
+			i, acc.Pubkey, acc.Account.Data.Parsed.Info.Mint, amountStr)
+
+		if acc.Account.Data.Parsed.Info.Mint == mint {
+			// Found matching mint
+			var amount uint64
+			fmt.Sscanf(amountStr, "%d", &amount)
+			log.Printf("[SPL] GetTokenBalance: FOUND MATCHING TOKEN ACCOUNT! pubkey=%s, amount=%d",
+				acc.Pubkey, amount)
+			return amount, nil
+		}
+	}
+
+	log.Printf("[SPL] GetTokenBalance: no token account found for mint=%s", mint)
+	return 0, nil
 }
 
-// createSPLTransferInstruction creates a SPL token transfer instruction
-func (b *TxBuilder) createSPLTransferInstruction(source, dest, mint, authority string, amount uint64) CompiledInstruction {
-	// SPL Transfer instruction: transfer(checker, source, dest, authority, signers[], amount)
-	// Program data: [transfer instruction (1 byte) + amount (8 bytes)]
-	data := make([]byte, 9)
-	data[0] = 3 // Transfer instruction index
-
-	// Encode amount as little-endian 64-bit
-	binary.LittleEndian.PutUint64(data[1:], amount)
-
-	return CompiledInstruction{
-		ProgramIDIndex: 2,                      // Token program
-		Accounts:       []uint8{4, 5, 1, 0, 3}, // source, dest, mint, authority, (signer)
-		Data:           data,
+// FindSPLTokenAccount finds the actual token account address for a wallet and mint
+func (b *TxBuilder) FindSPLTokenAccount(ctx context.Context, owner, mint string) (string, error) {
+	result, err := b.rpcClient.call(ctx, "getTokenAccountsByOwner", owner, map[string]interface{}{
+		"programId": TokenProgramID,
+	}, map[string]interface{}{
+		"encoding": "jsonParsed",
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to query token accounts: %w", err)
 	}
+
+	type TokenAccountInfo struct {
+		Mint        string `json:"mint"`
+		TokenAmount struct {
+			Amount string `json:"amount"`
+		} `json:"tokenAmount"`
+	}
+	type TokenAccount struct {
+		Pubkey  string `json:"pubkey"`
+		Account struct {
+			Data struct {
+				Parsed struct {
+					Info TokenAccountInfo `json:"info"`
+				} `json:"parsed"`
+			} `json:"data"`
+		} `json:"account"`
+	}
+	type RPCResponse struct {
+		Value []TokenAccount `json:"value"`
+	}
+
+	var tokenAccounts RPCResponse
+	if err := json.Unmarshal(result, &tokenAccounts); err != nil {
+		return "", fmt.Errorf("failed to parse token accounts: %w", err)
+	}
+
+	for _, acc := range tokenAccounts.Value {
+		if acc.Account.Data.Parsed.Info.Mint == mint {
+			return acc.Pubkey, nil
+		}
+	}
+
+	return "", fmt.Errorf("token account not found for mint %s", mint)
 }
 
 // BuildSPLTransferTx builds an SPL token transfer transaction
-func (b *TxBuilder) BuildSPLTransferTx(ctx context.Context, from, to, mint string, amount uint64) ([]byte, error) {
+func (b *TxBuilder) BuildSPLTransferTx(ctx context.Context, from, to, mint string, amount uint64, sourceATA string) ([]byte, error) {
+	log.Printf("[SPL] BuildSPLTransferTx: from=%s, to=%s, mint=%s, amount=%d, sourceATA=%s", from, to, mint, amount, sourceATA)
+
 	blockhash, err := b.rpcClient.GetLatestBlockhash(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get blockhash: %w", err)
 	}
 
-	// Derive ATAs (simplified - real implementation uses proper PDA derivation)
-	fromAta := from // In real impl: derive ATA(from, mint)
-	toAta := to     // In real impl: derive ATA(to, mint)
+	// Use provided source ATA or find it via RPC
+	fromAta := sourceATA
+	if fromAta == "" {
+		fromAta, err = b.FindSPLTokenAccount(ctx, from, mint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find source token account: %w", err)
+		}
+		if fromAta == "" {
+			return nil, fmt.Errorf("source wallet has no token account for mint %s", mint)
+		}
+	}
+	log.Printf("[SPL] Source token account: %s", fromAta)
 
-	// For now, use simplified message structure - just token program accounts
+	// For destination, try to find existing token account
+	toAta, err := b.FindSPLTokenAccount(ctx, to, mint)
+	if err != nil {
+		log.Printf("[SPL] Warning: Failed to find destination token account: %v", err)
+	}
+
+	if toAta == "" {
+		log.Printf("[SPL] Destination has no token account for mint %s. Need to create ATA.", mint)
+		// For now, we'll return an error. In production, you'd create the ATA here.
+		return nil, fmt.Errorf("destination wallet has no token account for mint %s - ATA creation not yet implemented", mint)
+	}
+	log.Printf("[SPL] Destination token account: %s", toAta)
+
+	// Create the transfer instruction data
+	transferData := b.createSPLTransferData(amount)
+	log.Printf("[SPL] Transfer instruction data length: %d", len(transferData))
+
+	// Build account keys list - deduplicate if self-transfer
+	accountKeys := []string{from}
+	accountIndexMap := map[string]int{
+		from: 0,
+	}
+
+	addAccount := func(addr string) uint8 {
+		if idx, exists := accountIndexMap[addr]; exists {
+			return uint8(idx)
+		}
+		idx := len(accountKeys)
+		accountKeys = append(accountKeys, addr)
+		accountIndexMap[addr] = idx
+		return uint8(idx)
+	}
+
+	fromAtaIdx := addAccount(fromAta)
+	toAtaIdx := addAccount(toAta)
+	_ = addAccount(TokenProgramID)
+
+	log.Printf("[SPL] Account keys: %v", accountKeys)
+	log.Printf("[SPL] Indices: from=%d, fromAta=%d, toAta=%d, TokenProgram=%d",
+		0, fromAtaIdx, toAtaIdx, accountIndexMap[TokenProgramID])
+
 	msg := &Message{
 		Header: MessageHeader{
 			NumRequiredSignatures:       1,
-			NumReadonlySignedAccounts:   2,
-			NumReadonlyUnsignedAccounts: 2,
+			NumReadonlySignedAccounts:   0,
+			NumReadonlyUnsignedAccounts: 2, // token program and potentially system
 		},
-		AccountKeys: []string{
-			from,            // 0: fee payer + source authority (signer)
-			fromAta,         // 1: source ATA
-			toAta,           // 2: destination ATA
-			mint,            // 3: token mint
-			from,            // 4: authority (signer)
-			TokenProgramID,  // 5: token program
-			SystemProgramID, // 6: system program (for any needed transfers)
-		},
+		AccountKeys:     accountKeys,
 		RecentBlockhash: blockhash.Blockhash,
 		Instructions: []CompiledInstruction{
 			{
-				ProgramIDIndex: 5,                      // Token program
-				Accounts:       []uint8{1, 2, 3, 0, 0}, // source, dest, mint, authority (all same for now)
-				Data:           b.createSPLTransferData(amount),
+				ProgramIDIndex: uint8(accountIndexMap[TokenProgramID]),
+				// SPL Transfer instruction accounts: [source, dest, authority]
+				Accounts: []uint8{fromAtaIdx, toAtaIdx, 0}, // source ATA, dest ATA, authority (from)
+				Data:     transferData,
 			},
 		},
 	}
 
-	return b.serializeMessage(msg)
+	txBytes, err := b.serializeMessage(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize message: %w", err)
+	}
+	log.Printf("[SPL] Transaction built: %d bytes", len(txBytes))
+
+	return txBytes, nil
 }
 
 func (b *TxBuilder) createSPLTransferData(amount uint64) []byte {
 	data := make([]byte, 9)
-	data[0] = 3 // Transfer instruction
+	data[0] = 3 // Transfer instruction index for SPL Token
 	binary.LittleEndian.PutUint64(data[1:], amount)
 	return data
 }
