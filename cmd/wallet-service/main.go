@@ -21,6 +21,10 @@ import (
 	"github.com/yourorg/hsm/pkg/signer"
 	"github.com/yourorg/hsm/pkg/transaction"
 	"github.com/yourorg/hsm/pkg/wallet"
+	"github.com/yourorg/hsm/pkg/zk/policy"
+	zkprover "github.com/yourorg/hsm/pkg/zk/prover"
+	zktypes "github.com/yourorg/hsm/pkg/zk/types"
+	zkverifier "github.com/yourorg/hsm/pkg/zk/verifier"
 )
 
 const (
@@ -47,6 +51,7 @@ type Server struct {
 	maxRetries        int
 	lockTimeout       time.Duration
 	walletLocks       sync.Map // map of "walletID_chain" -> struct{}
+	policyEngine      *policy.PolicyEngine
 }
 
 func main() {
@@ -121,6 +126,28 @@ func main() {
 	solanaBuilder := solana.NewTxBuilder(solanaRPCClient)
 	txService.AddSolanaChain("solana", solanaBuilder)
 
+	// Initialize ZK Policy Engine
+	zkCircuitsDir := os.Getenv("ZK_CIRCUITS_DIR")
+	if zkCircuitsDir == "" {
+		zkCircuitsDir = "./pkg/zk/circuits"
+	}
+	zkArtifactsDir := os.Getenv("ZK_ARTIFACTS_DIR")
+	if zkArtifactsDir == "" {
+		zkArtifactsDir = "./pkg/zk/artifacts"
+	}
+
+	var policyEngine *policy.PolicyEngine
+	if _, err := os.Stat(zkCircuitsDir); err == nil {
+		proverInstance := zkprover.New(zkCircuitsDir, zkArtifactsDir)
+		verifierInstance := zkverifier.New(zkCircuitsDir, zkArtifactsDir)
+
+		transferLimitPolicy := policy.NewTransferLimitPolicy("10000", "0", zkCircuitsDir, zkArtifactsDir)
+		policyEngine = policy.New([]zktypes.Policy{transferLimitPolicy}, proverInstance, verifierInstance)
+		log.Printf("[ZK] Policy engine initialized with %d policies", len(policyEngine.ListPolicies()))
+	} else {
+		log.Printf("[ZK] Circuit directory not found at %s, ZK verification disabled", zkCircuitsDir)
+	}
+
 	// Initialize server
 	server := &Server{
 		walletStore:       walletStore,
@@ -131,6 +158,7 @@ func main() {
 		intentExpiryHours: intentExpiryHours,
 		maxRetries:        maxRetries,
 		lockTimeout:       defaultLockTimeout,
+		policyEngine:      policyEngine,
 	}
 
 	// Create router
@@ -887,6 +915,27 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 		tokenType = "native"
 	}
 	log.Printf("[EXECUTE] Executing for chain=%s, tokenType=%s", intent.Chain, tokenType)
+
+	// ZK Policy Verification Gate
+	if s.policyEngine != nil {
+		log.Printf("[ZK] Running policy verification for intent %s", intentID)
+		zkIntent := &zktypes.Intent{
+			WalletID: intent.WalletID,
+			Chain:   intent.Chain,
+			To:      intent.To,
+			Value:   intent.Value,
+		}
+		proof, err := s.policyEngine.EvaluateAndProve(zkIntent)
+		if err != nil {
+			log.Printf("[ZK] Policy verification failed: %v", err)
+			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", fmt.Sprintf("ZK policy not satisfied: %v", err))
+			sendError(w, http.StatusForbidden, fmt.Sprintf("Intent does not satisfy ZK policies: %v", err))
+			return
+		}
+		log.Printf("[ZK] Policy verified successfully, proof generated at %v", proof.GeneratedAt)
+	} else {
+		log.Printf("[ZK] Policy engine not available, skipping ZK verification")
+	}
 
 	switch {
 	case tokenType == "spl":
