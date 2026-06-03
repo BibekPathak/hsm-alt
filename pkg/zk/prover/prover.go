@@ -29,9 +29,9 @@ type ProofInput struct {
 }
 
 func (p *Prover) GenerateProof(circuitName string, input ProofInput) (*types.Proof, error) {
-	circuitDir := filepath.Join(p.circuitsDir, circuitName)
+	circuitDir := filepath.Join(p.circuitsDir, "artifacts", circuitName)
 	wasmPath := filepath.Join(circuitDir, circuitName+"_js", circuitName+".wasm")
-	pkeyPath := filepath.Join(circuitDir, circuitName+"_pkey.json")
+	pkeyPath := filepath.Join(circuitDir, circuitName+"_final.zkey")
 
 	for _, path := range []string{wasmPath, pkeyPath} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -82,23 +82,27 @@ func (p *Prover) GenerateProof(circuitName string, input ProofInput) (*types.Pro
 	}
 	defer os.Remove(proofPath)
 
-	var proofJson map[string]interface{}
-	if err := json.Unmarshal(proofData, &proofJson); err != nil {
-		return nil, fmt.Errorf("failed to parse proof JSON: %w", err)
+	pubData, err := os.ReadFile(pubInputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read public input file: %w", err)
+	}
+	defer os.Remove(pubInputPath)
+
+	var publicInputs []string
+	if err := json.Unmarshal(pubData, &publicInputs); err != nil {
+		return nil, fmt.Errorf("failed to parse public inputs: %w", err)
 	}
 
-	proofBytes, _ := json.Marshal(proofJson["proof"])
-
 	return &types.Proof{
-		Data:         proofBytes,
-		PublicInputs: []string{input.PublicInputs["transfer_amount"]},
+		Data:         proofData,
+		PublicInputs: publicInputs,
 		CircuitName:  circuitName,
 		GeneratedAt:  time.Now().UTC(),
 	}, nil
 }
 
 func (p *Prover) Verify(circuitName string, proof *types.Proof) (*types.VerificationResult, error) {
-	circuitDir := filepath.Join(p.circuitsDir, circuitName)
+	circuitDir := filepath.Join(p.circuitsDir, "artifacts", circuitName)
 	vkeyPath := filepath.Join(circuitDir, circuitName+"_vkey.json")
 
 	if _, err := os.Stat(vkeyPath); os.IsNotExist(err) {

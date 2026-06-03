@@ -24,7 +24,7 @@ func New(circuitsDir, artifactsDir string) *Verifier {
 }
 
 func (v *Verifier) Verify(circuitName string, proof *types.Proof) (*types.VerificationResult, error) {
-	circuitDir := filepath.Join(v.circuitsDir, circuitName)
+	circuitDir := filepath.Join(v.circuitsDir, "artifacts", circuitName)
 	vkeyPath := filepath.Join(circuitDir, circuitName+"_vkey.json")
 
 	if _, err := os.Stat(vkeyPath); os.IsNotExist(err) {
@@ -69,7 +69,7 @@ func (v *Verifier) Verify(circuitName string, proof *types.Proof) (*types.Verifi
 }
 
 func (v *Verifier) LoadVerificationKey(circuitName string) (map[string]interface{}, error) {
-	circuitDir := filepath.Join(v.circuitsDir, circuitName)
+	circuitDir := filepath.Join(v.circuitsDir, "artifacts", circuitName)
 	vkeyPath := filepath.Join(circuitDir, circuitName+"_vkey.json")
 
 	data, err := os.ReadFile(vkeyPath)

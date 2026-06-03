@@ -53,3 +53,9 @@ secrets/
 /**/node_modules/
 
 ui/dashboard/.next/
+
+circom/
+
+pkg/zk/artifacts/
+pkg/zk/circuits/artifacts/
+zk-cli

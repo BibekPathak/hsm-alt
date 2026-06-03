@@ -11,6 +11,9 @@ POWERS_OF_TAU_DIR="$SCRIPT_DIR/../artifacts"
 
 CIRCUIT_DIR="$ARTIFACTS_DIR/${CIRCUIT_NAME}"
 PTAU_FILE="$POWERS_OF_TAU_DIR/pot12_final.ptau"
+PTAU_RAW="$POWERS_OF_TAU_DIR/pot12_0000.ptau"
+PTAU_CONTRIB="$POWERS_OF_TAU_DIR/pot12_0001.ptau"
+PTAU_PHASE2="$POWERS_OF_TAU_DIR/pot12_phase2.ptau"
 PTAU_POWER=12
 
 echo "============================================"
@@ -47,8 +50,16 @@ echo "[2/6] Initializing Powers of Tau..."
 
 if [ ! -f "$PTAU_FILE" ]; then
     echo "  Creating new Powers of Tau (2^$PTAU_POWER constraints)..."
-    snarkjs powersoftau new bn128 $PTAU_POWER "$PTAU_FILE" -v 2>&1 | tail -3
+    snarkjs powersoftau new bn128 $PTAU_POWER "$PTAU_RAW" -v 2>&1 | tail -3
     echo "  ✓ Powers of Tau initialized"
+
+    echo "  Contributing to Powers of Tau..."
+    snarkjs powersoftau contribute "$PTAU_RAW" "$PTAU_CONTRIB" -n="First contribution" -v -e="random entropy" 2>&1 | tail -3
+    echo "  ✓ Contribution done"
+
+    echo "  Preparing phase 2..."
+    snarkjs powersoftau prepare phase2 "$PTAU_CONTRIB" "$PTAU_FILE" -v 2>&1 | tail -3
+    echo "  ✓ Phase 2 ready"
 else
     echo "  ✓ Using existing Powers of Tau: $PTAU_FILE"
 fi
@@ -62,9 +73,7 @@ CIRCUIT_OUTPUT="$CIRCUIT_DIR/${CIRCUIT_NAME}"
 circom "$CIRCUIT_FILE" \
     --wasm \
     --r1cs \
-    --sym \
-    --output "$CIRCUIT_DIR" \
-    --name "$CIRCUIT_NAME" 2>&1 | tail -10
+    --output "$CIRCUIT_DIR" 2>&1 | tail -10
 
 if [ ! -f "$CIRCUIT_DIR/${CIRCUIT_NAME}.r1cs" ]; then
     echo "ERROR: Circuit compilation failed"
@@ -75,20 +84,20 @@ echo "  ✓ Circuit compiled: ${CIRCUIT_NAME}.r1cs"
 echo "  ✓ WASM output: ${CIRCUIT_NAME}_js/${CIRCUIT_NAME}.wasm"
 
 echo ""
-echo "[4/6] Generating proving key..."
+echo "[4/6] Generating proving key (zkey)..."
 
 snarkjs groth16 setup \
     "$CIRCUIT_DIR/${CIRCUIT_NAME}.r1cs" \
     "$PTAU_FILE" \
-    "$CIRCUIT_DIR/${CIRCUIT_NAME}_pkey.json" 2>&1 | tail -3
+    "$CIRCUIT_DIR/${CIRCUIT_NAME}_final.zkey" 2>&1 | tail -3
 
-echo "  ✓ Proving key generated"
+echo "  ✓ Proving key (zkey) generated"
 
 echo ""
 echo "[5/6] Generating verification key..."
 
-snarkjs groth16 export verificationkey \
-    "$CIRCUIT_DIR/${CIRCUIT_NAME}_pkey.json" \
+snarkjs zkey export verificationkey \
+    "$CIRCUIT_DIR/${CIRCUIT_NAME}_final.zkey" \
     "$CIRCUIT_DIR/${CIRCUIT_NAME}_vkey.json" 2>&1 | tail -3
 
 echo "  ✓ Verification key generated"

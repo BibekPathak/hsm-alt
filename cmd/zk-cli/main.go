@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/yourorg/hsm/pkg/zk/policy"
@@ -24,7 +25,6 @@ func main() {
 	proveAmount := proveCmd.String("amount", "", "Transfer amount (public input)")
 	proveLimit := proveCmd.String("limit", "", "Daily limit (private input)")
 	proveSpent := proveCmd.String("spent", "", "Spent today (private input)")
-	proveCircuit := proveCmd.String("circuit", "transfer_limit", "Circuit name")
 
 	verifyCmd := flag.NewFlagSet("verify", flag.ExitOnError)
 	verifyProofPath := verifyCmd.String("proof", "", "Path to proof JSON file")
@@ -39,13 +39,19 @@ func main() {
 
 	switch os.Args[1] {
 	case "prove":
-		proveCmd.Parse(os.Args[2:])
+		args := os.Args[2:]
+		circuitName := "transfer_limit"
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+			circuitName = args[0]
+			args = args[1:]
+		}
+		proveCmd.Parse(args)
 		if *proveAmount == "" || *proveLimit == "" || *proveSpent == "" {
 			fmt.Println("Error: --amount, --limit, and --spent are required")
 			proveCmd.PrintDefaults()
 			os.Exit(1)
 		}
-		runProve(*proveCircuit, *proveAmount, *proveLimit, *proveSpent)
+		runProve(circuitName, *proveAmount, *proveLimit, *proveSpent)
 
 	case "verify":
 		verifyCmd.Parse(os.Args[2:])
