@@ -48,17 +48,34 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	peerAddrs := parsePeers(*flagPeers)
-
-	nodeConfig := &config.NodeConfig{
-		NodeID:      uint32(*flagNodeID),
-		ClusterID:   *flagClusterID,
-		Threshold:   uint32(*flagThreshold),
-		TotalNodes:  uint32(*flagTotalNodes),
-		ListenAddr:  *flagListenAddr,
-		EnclaveAddr: fmt.Sprintf("localhost:%d", *flagEnclavePort),
-		PeerAddrs:   peerAddrs,
-		ShareFile:   shareDir + fmt.Sprintf("/node_%d/share.json", *flagNodeID),
+	// Load config from file if provided
+	var nodeConfig *config.NodeConfig
+	if *flagConfigPath != "" {
+		var err error
+		nodeConfig, err = config.LoadNodeConfig(*flagConfigPath)
+		if err != nil {
+			logger.Fatal("Failed to load config file", zap.Error(err))
+		}
+		// Set share file path based on loaded config
+		if nodeConfig.ShareFile == "" {
+			nodeConfig.ShareFile = shareDir + fmt.Sprintf("/node_%d/share.json", nodeConfig.NodeID)
+		}
+		logger.Info("Loaded config from file",
+			zap.String("path", *flagConfigPath),
+			zap.Uint32("node_id", nodeConfig.NodeID),
+		)
+	} else {
+		peerAddrs := parsePeers(*flagPeers)
+		nodeConfig = &config.NodeConfig{
+			NodeID:      uint32(*flagNodeID),
+			ClusterID:   *flagClusterID,
+			Threshold:   uint32(*flagThreshold),
+			TotalNodes:  uint32(*flagTotalNodes),
+			ListenAddr:  *flagListenAddr,
+			EnclaveAddr: fmt.Sprintf("localhost:%d", *flagEnclavePort),
+			PeerAddrs:   peerAddrs,
+			ShareFile:   shareDir + fmt.Sprintf("/node_%d/share.json", *flagNodeID),
+		}
 	}
 
 	if err := nodeConfig.Validate(); err != nil {

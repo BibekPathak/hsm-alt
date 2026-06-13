@@ -1,0 +1,11 @@
+node_id: 1
+cluster_id: "wallet_demo"
+threshold: 2
+total_nodes: 3
+listen_addr: "localhost:8001"
+enclave_addr: "localhost:7001"
+peer_addrs:
+  2: "localhost:8002"
+  3: "localhost:8003"
+tls_enabled: false
+metrics_addr: "localhost:9091"
