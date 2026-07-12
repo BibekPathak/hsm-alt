@@ -23,7 +23,8 @@ type Account struct {
 
 // CreateWalletRequest is the API request to create a wallet
 type CreateWalletRequest struct {
-	Name string `json:"name"`
+	Name       string `json:"name"`
+	SignerType string `json:"signer_type"` // "ecdsa" (default), "mpc_solana"
 }
 
 // CreateWalletResponse is the API response for wallet creation

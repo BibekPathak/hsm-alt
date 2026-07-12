@@ -18,6 +18,8 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/yourorg/hsm/pkg/blockchain/ethereum"
 	"github.com/yourorg/hsm/pkg/blockchain/solana"
+	"github.com/yourorg/hsm/pkg/config"
+	mpcnode "github.com/yourorg/hsm/pkg/mpc/node"
 	"github.com/yourorg/hsm/pkg/signer"
 	"github.com/yourorg/hsm/pkg/transaction"
 	"github.com/yourorg/hsm/pkg/wallet"
@@ -25,6 +27,7 @@ import (
 	zkprover "github.com/yourorg/hsm/pkg/zk/prover"
 	zktypes "github.com/yourorg/hsm/pkg/zk/types"
 	zkverifier "github.com/yourorg/hsm/pkg/zk/verifier"
+	"go.uber.org/zap"
 )
 
 const (
@@ -52,6 +55,10 @@ type Server struct {
 	lockTimeout       time.Duration
 	walletLocks       sync.Map // map of "walletID_chain" -> struct{}
 	policyEngine      *policy.PolicyEngine
+
+	mpcEnabled       bool
+	mpcCoordinator   signer.SignCoordinator
+	mpcSolanaSigner  *signer.MPCSolanaSigner
 }
 
 func main() {
@@ -148,6 +155,57 @@ func main() {
 		log.Printf("[ZK] Circuit directory not found at %s, ZK verification disabled", zkCircuitsDir)
 	}
 
+	// Initialize MPC signing coordinator
+	mpcEnabled := os.Getenv("MPC_ENABLED")
+	var mpcCoordinator signer.SignCoordinator
+	var mpcSolanaSigner *signer.MPCSolanaSigner
+	if mpcEnabled == "true" {
+		mpcNodeIDStr := os.Getenv("MPC_NODE_ID")
+		mpcNodeID := uint64(1)
+		if mpcNodeIDStr != "" {
+			if id, err := strconv.ParseUint(mpcNodeIDStr, 10, 32); err == nil {
+				mpcNodeID = id
+			}
+		}
+		mpcClusterID := os.Getenv("MPC_CLUSTER_ID")
+		if mpcClusterID == "" {
+			mpcClusterID = "wallet_demo"
+		}
+		mpcPeers := os.Getenv("MPC_PEERS")
+		mpcThreshold := uint64(2)
+		if tStr := os.Getenv("MPC_THRESHOLD"); tStr != "" {
+			if t, err := strconv.ParseUint(tStr, 10, 32); err == nil {
+				mpcThreshold = t
+			}
+		}
+
+		if mpcPeers != "" {
+			peerAddrs := parseMPCPeers(mpcPeers)
+			mpcCfg := &config.NodeConfig{
+				NodeID:     uint32(mpcNodeID),
+				ClusterID:  mpcClusterID,
+				Threshold:  uint32(mpcThreshold),
+				PeerAddrs:  peerAddrs,
+			}
+
+			zapLogger, _ := zap.NewProduction()
+			orch := mpcnode.NewSignOrchestrator(mpcCfg, zapLogger)
+
+			dkgCtx, dkgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := orch.ConnectToPeers(dkgCtx); err != nil {
+				log.Printf("[MPC] WARNING: Failed to connect to MPC peers: %v", err)
+			}
+			dkgCancel()
+
+			mpcCoordinator = &mpcSignCoordinator{orch: orch}
+			mpcSigner, _ := signer.NewMPCSolanaSigner(uint32(mpcNodeID), mpcClusterID, mpcCoordinator)
+			mpcSolanaSigner = mpcSigner
+			log.Printf("[MPC] MPC coordinator initialized for cluster %s, node %d", mpcClusterID, mpcNodeID)
+		} else {
+			log.Printf("[MPC] MPC_ENABLED=true but no MPC_PEERS set, skipping MPC initialization")
+		}
+	}
+
 	// Initialize server
 	server := &Server{
 		walletStore:       walletStore,
@@ -159,6 +217,9 @@ func main() {
 		maxRetries:        maxRetries,
 		lockTimeout:       defaultLockTimeout,
 		policyEngine:      policyEngine,
+		mpcEnabled:        mpcEnabled == "true",
+		mpcCoordinator:    mpcCoordinator,
+		mpcSolanaSigner:   mpcSolanaSigner,
 	}
 
 	// Create router
@@ -228,38 +289,63 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 
 	var accounts []wallet.Account
 
-	ecdsaSigner, err := signer.NewECDSASigner()
-	if err == nil {
-		ethAccount := &wallet.Account{
-			WalletID:   newWallet.ID,
-			Chain:      "ethereum",
-			Address:    ecdsaSigner.EthereumAddress(),
-			PubKey:     ecdsaSigner.CompressedPublicKey(),
-			SignerType: "ecdsa",
-			Index:      0,
+	if req.SignerType == "mpc_solana" {
+		if !s.mpcEnabled || s.mpcSolanaSigner == nil {
+			sendError(w, http.StatusBadRequest, "MPC signing not configured. Set MPC_ENABLED=true and MPC_PEERS.")
+			return
 		}
-		if err := s.walletStore.SaveAccount(ethAccount); err == nil {
-			s.keyStore.SaveKey(newWallet.ID, "ethereum", 0, ethAccount.Address, ecdsaSigner.PrivateKeyHex(), s.password)
-			accounts = append(accounts, *ethAccount)
+		pubKey := s.mpcSolanaSigner.PublicKey()
+		if len(pubKey) == 0 {
+			sendError(w, http.StatusBadRequest, "MPC signer has no public key. Run DKG first via mpc-cli to generate cluster keys.")
+			return
 		}
-		ecdsaSigner.Zeroize()
-	}
-
-	solanaSigner, err := signer.NewSolanaSigner()
-	if err == nil {
-		solAccount := &wallet.Account{
+		address := base58Encode(pubKey)
+		mpcAccount := &wallet.Account{
 			WalletID:   newWallet.ID,
 			Chain:      "solana",
-			Address:    solanaSigner.Address(),
-			PubKey:     solanaSigner.CompressedPublicKey(),
-			SignerType: "ed25519",
+			Address:    address,
+			PubKey:     pubKey,
+			SignerType: "mpc_solana",
 			Index:      0,
 		}
-		if err := s.walletStore.SaveAccount(solAccount); err == nil {
-			s.keyStore.SaveKey(newWallet.ID, "solana", 0, solAccount.Address, solanaSigner.PrivateKeyHex(), s.password)
-			accounts = append(accounts, *solAccount)
+		if err := s.walletStore.SaveAccount(mpcAccount); err == nil {
+			accounts = append(accounts, *mpcAccount)
 		}
-		solanaSigner.Zeroize()
+		log.Printf("Created MPC Solana account for wallet %s, address=%s", newWallet.ID, address)
+	} else {
+		ecdsaSigner, err := signer.NewECDSASigner()
+		if err == nil {
+			ethAccount := &wallet.Account{
+				WalletID:   newWallet.ID,
+				Chain:      "ethereum",
+				Address:    ecdsaSigner.EthereumAddress(),
+				PubKey:     ecdsaSigner.CompressedPublicKey(),
+				SignerType: "ecdsa",
+				Index:      0,
+			}
+			if err := s.walletStore.SaveAccount(ethAccount); err == nil {
+				s.keyStore.SaveKey(newWallet.ID, "ethereum", 0, ethAccount.Address, ecdsaSigner.PrivateKeyHex(), s.password)
+				accounts = append(accounts, *ethAccount)
+			}
+			ecdsaSigner.Zeroize()
+		}
+
+		solanaSigner, err := signer.NewSolanaSigner()
+		if err == nil {
+			solAccount := &wallet.Account{
+				WalletID:   newWallet.ID,
+				Chain:      "solana",
+				Address:    solanaSigner.Address(),
+				PubKey:     solanaSigner.CompressedPublicKey(),
+				SignerType: "ed25519",
+				Index:      0,
+			}
+			if err := s.walletStore.SaveAccount(solAccount); err == nil {
+				s.keyStore.SaveKey(newWallet.ID, "solana", 0, solAccount.Address, solanaSigner.PrivateKeyHex(), s.password)
+				accounts = append(accounts, *solAccount)
+			}
+			solanaSigner.Zeroize()
+		}
 	}
 
 	if len(accounts) == 0 {
@@ -275,6 +361,37 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Created wallet %s with %d accounts", newWallet.ID, len(accounts))
 	sendJSON(w, http.StatusCreated, response)
+}
+
+func base58Encode(data []byte) string {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	if len(data) == 0 {
+		return ""
+	}
+	zeroCount := 0
+	for _, b := range data {
+		if b == 0 {
+			zeroCount++
+		} else {
+			break
+		}
+	}
+	value := new(big.Int)
+	value.SetBytes(data)
+	var result []byte
+	base := big.NewInt(58)
+	mod := new(big.Int)
+	for value.Sign() > 0 {
+		value.DivMod(value, base, mod)
+		result = append(result, alphabet[mod.Int64()])
+	}
+	for i := 0; i < zeroCount; i++ {
+		result = append(result, alphabet[0])
+	}
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return string(result)
 }
 
 func (s *Server) handleListWallets(w http.ResponseWriter, r *http.Request) {
@@ -897,14 +1014,31 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	defer s.walletLocks.Delete(lockKey)
 
 	log.Printf("[EXECUTE] Loading key for intent %s, wallet %s, chain %s", intentID, intent.WalletID, intent.Chain)
-	_, privateKeyHex, err := s.keyStore.LoadKey(intent.WalletID, intent.Chain, 0, s.password)
-	if err != nil {
-		log.Printf("[EXECUTE] ERROR: LoadKey failed: %v", err)
-		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load key: %v", err))
-		return
+
+	var solanaSigner transaction.SolanaTxSigner
+	isSolanaMPC := false
+
+	if intent.Chain == "solana" && s.mpcEnabled && s.mpcSolanaSigner != nil {
+		account, accErr := s.walletStore.GetAccount(intent.WalletID, "solana")
+		if accErr == nil && account != nil && account.SignerType == "mpc_solana" {
+			isSolanaMPC = true
+			solanaSigner = s.mpcSolanaSigner
+			log.Printf("[EXECUTE] Using MPC signer for Solana intent %s", intentID)
+		}
 	}
-	log.Printf("[EXECUTE] Key loaded successfully, length: %d", len(privateKeyHex))
+
+	var privateKeyHex string
+	var loadErr error
+	if !isSolanaMPC {
+		_, privateKeyHex, loadErr = s.keyStore.LoadKey(intent.WalletID, intent.Chain, 0, s.password)
+		if loadErr != nil {
+			log.Printf("[EXECUTE] ERROR: LoadKey failed: %v", loadErr)
+			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", loadErr.Error())
+			sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load key: %v", loadErr))
+			return
+		}
+		log.Printf("[EXECUTE] Key loaded successfully, length: %d", len(privateKeyHex))
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.lockTimeout)
 	defer cancel()
@@ -940,13 +1074,28 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case tokenType == "spl":
 		log.Printf("[EXECUTE] Calling executeSPLIntent...")
-		txHash, err = s.executeSPLIntent(ctx, intent, intentID, privateKeyHex)
+		if isSolanaMPC {
+			txHash, err = s.executeSPLIntent(ctx, intent, intentID, solanaSigner)
+		} else {
+			directSigner, signErr := signer.NewSolanaSignerFromHex(privateKeyHex)
+			if signErr != nil {
+				s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", signErr.Error())
+				sendError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create signer: %v", signErr))
+				return
+			}
+			txHash, err = s.executeSPLIntent(ctx, intent, intentID, directSigner)
+			directSigner.Zeroize()
+		}
 	case tokenType == "erc20":
 		log.Printf("[EXECUTE] Calling executeERC20Intent...")
 		txHash, err = s.executeERC20Intent(ctx, intent, intentID, privateKeyHex)
 	default:
 		log.Printf("[EXECUTE] Calling executeNativeIntent...")
-		txHash, err = s.executeNativeIntent(ctx, intent, intentID, privateKeyHex)
+		if isSolanaMPC {
+			txHash, err = s.executeNativeIntent(ctx, intent, intentID, "", solanaSigner)
+		} else {
+			txHash, err = s.executeNativeIntent(ctx, intent, intentID, privateKeyHex, nil)
+		}
 	}
 
 	if err != nil {
@@ -965,14 +1114,23 @@ func (s *Server) handleExecuteIntent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) executeNativeIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+func (s *Server) executeNativeIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string, solanaSigner transaction.SolanaTxSigner) (string, error) {
 	if intent.Chain == "solana" {
-		return s.executeSolanaNative(ctx, intent, intentID, privateKeyHex)
+		if solanaSigner != nil {
+			return s.executeSolanaNative(ctx, intent, intentID, solanaSigner)
+		}
+		directSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
+		if err != nil {
+			s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
+			return "", err
+		}
+		defer directSigner.Zeroize()
+		return s.executeSolanaNative(ctx, intent, intentID, directSigner)
 	}
 	return s.executeEthereumNative(ctx, intent, intentID, privateKeyHex)
 }
 
-func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.TransactionIntent, intentID string, signer transaction.SolanaTxSigner) (string, error) {
 	lamports, err := solana.ParseSOL(intent.Value)
 	if err != nil {
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", "Invalid SOL value")
@@ -992,14 +1150,7 @@ func (s *Server) executeSolanaNative(ctx context.Context, intent *wallet.Transac
 		return "", err
 	}
 
-	solanaSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
-	if err != nil {
-		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-		return "", err
-	}
-	defer solanaSigner.Zeroize()
-
-	txHash, err := s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, solanaSigner, true)
+	txHash, err := s.txService.SendSolanaTransaction(ctx, intent.Chain, intent.From, intent.To, lamports, signer, true)
 	if err != nil {
 		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
 		return "", err
@@ -1093,7 +1244,7 @@ func (s *Server) executeERC20Intent(ctx context.Context, intent *wallet.Transact
 	return s.txService.SendERC20Transaction(ctx, intent.Chain, intent.TokenAddress, intent.To, amount, ecdsaSigner, feeSpeed)
 }
 
-func (s *Server) executeSPLIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID, privateKeyHex string) (string, error) {
+func (s *Server) executeSPLIntent(ctx context.Context, intent *wallet.TransactionIntent, intentID string, signer transaction.SolanaTxSigner) (string, error) {
 	// Trim whitespace from token address to handle copy/paste errors
 	intent.TokenAddress = strings.TrimSpace(intent.TokenAddress)
 
@@ -1145,14 +1296,7 @@ func (s *Server) executeSPLIntent(ctx context.Context, intent *wallet.Transactio
 		return "", err
 	}
 
-	solanaSigner, err := signer.NewSolanaSignerFromHex(privateKeyHex)
-	if err != nil {
-		s.intentStore.UpdateIntentStatus(intentID, wallet.IntentStatusFailed, "", err.Error())
-		return "", err
-	}
-	defer solanaSigner.Zeroize()
-
-	return s.txService.SendSPLTransaction(ctx, intent.Chain, intent.TokenAddress, intent.To, tokenAmount.Uint64(), solanaSigner, true)
+	return s.txService.SendSPLTransaction(ctx, intent.Chain, intent.TokenAddress, intent.To, tokenAmount.Uint64(), signer, true)
 }
 
 func (s *Server) handleRetryIntent(w http.ResponseWriter, r *http.Request) {
@@ -1204,6 +1348,30 @@ func (s *Server) runExpiryJob() {
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+type mpcSignCoordinator struct {
+	orch *mpcnode.SignOrchestrator
+}
+
+func (c *mpcSignCoordinator) Sign(ctx context.Context, msg []byte) ([]byte, error) {
+	result, err := c.orch.SignMessage(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+	return result.Signature, nil
+}
+
+func parseMPCPeers(peersStr string) map[uint32]string {
+	peerAddrs := make(map[uint32]string)
+	if peersStr == "" {
+		return peerAddrs
+	}
+	addrs := strings.Split(peersStr, ",")
+	for i, addr := range addrs {
+		peerAddrs[uint32(i+1)] = strings.TrimSpace(addr)
+	}
+	return peerAddrs
 }
 
 func (s *Server) handleFeeEstimate(w http.ResponseWriter, r *http.Request) {

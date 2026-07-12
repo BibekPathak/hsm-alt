@@ -1,28 +1,36 @@
 package signer
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/mr-tron/base58"
 )
 
-type MPCSolanaSigner struct {
-	mu        sync.RWMutex
-	nodeID    uint32
-	clusterID string
-	publicKey ed25519.PublicKey
-	share     []byte
-	connected bool
+type SignCoordinator interface {
+	Sign(ctx context.Context, msg []byte) ([]byte, error)
 }
 
-func NewMPCSolanaSigner(nodeID uint32, clusterID string) (*MPCSolanaSigner, error) {
+type MPCSolanaSigner struct {
+	mu          sync.RWMutex
+	nodeID      uint32
+	clusterID   string
+	publicKey   ed25519.PublicKey
+	share       []byte
+	connected   bool
+	coordinator SignCoordinator
+}
+
+func NewMPCSolanaSigner(nodeID uint32, clusterID string, coordinator SignCoordinator) (*MPCSolanaSigner, error) {
 	return &MPCSolanaSigner{
-		nodeID:    nodeID,
-		clusterID: clusterID,
-		connected: false,
+		nodeID:      nodeID,
+		clusterID:   clusterID,
+		coordinator: coordinator,
+		connected:   false,
 	}, nil
 }
 
@@ -48,13 +56,28 @@ func (s *MPCSolanaSigner) SignTransaction(unsignedTx []byte) ([]byte, error) {
 
 func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
 	s.mu.RLock()
+	if s.coordinator == nil {
+		s.mu.RUnlock()
+		return nil, fmt.Errorf("MPC signer not configured: no SignCoordinator set")
+	}
 	if !s.connected {
 		s.mu.RUnlock()
 		return nil, fmt.Errorf("MPC signer not initialized: no key share loaded. Run DKG first to generate key shares.")
 	}
+	pubKey := make([]byte, len(s.publicKey))
+	copy(pubKey, s.publicKey)
 	s.mu.RUnlock()
 
-	return nil, fmt.Errorf("MPC signing requires multi-node coordination. Use SignOrchestrator to coordinate signing across threshold nodes")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	signature, err := s.coordinator.Sign(ctx, msg)
+	if err != nil {
+		return nil, fmt.Errorf("MPC signing failed: %w", err)
+	}
+
+	_ = pubKey
+	return signature, nil
 }
 
 func (s *MPCSolanaSigner) Address() string {

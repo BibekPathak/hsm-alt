@@ -12,6 +12,11 @@ import (
 	"github.com/yourorg/hsm/pkg/signer"
 )
 
+type SolanaTxSigner interface {
+	SignTransaction([]byte) ([]byte, error)
+	Address() string
+}
+
 type FeeSpeed string
 
 const (
@@ -76,7 +81,7 @@ func (s *Service) SendTransactionEIP1559(ctx context.Context, chain string, to s
 	return txHash, nil
 }
 
-func (s *Service) SendSolanaTransaction(ctx context.Context, chain string, from, to string, lamports uint64, solanaSigner *signer.SolanaSigner, confirm bool) (string, error) {
+func (s *Service) SendSolanaTransaction(ctx context.Context, chain string, from, to string, lamports uint64, solanaSigner SolanaTxSigner, confirm bool) (string, error) {
 	builder, ok := s.solanaBuilders[chain]
 	if !ok {
 		return "", fmt.Errorf("unsupported chain: %s", chain)
@@ -204,7 +209,7 @@ func (s *Service) SendERC20Transaction(ctx context.Context, chain, tokenContract
 	return txHash, nil
 }
 
-func (s *Service) SendSPLTransaction(ctx context.Context, chain, mint, to string, amount uint64, solanaSigner *signer.SolanaSigner, confirm bool) (string, error) {
+func (s *Service) SendSPLTransaction(ctx context.Context, chain, mint, to string, amount uint64, solanaSigner SolanaTxSigner, confirm bool) (string, error) {
 	log.Printf(`[SPL-SERVICE] SendSPLTransaction: chain=%s, mint=%s, to=%s, amount=%d`, chain, mint, to, amount)
 
 	builder, ok := s.solanaBuilders[chain]
