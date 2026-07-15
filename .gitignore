@@ -53,6 +53,7 @@ secrets/
 /**/node_modules/
 
 ui/dashboard/.next/
+ui/landing/.next/
 
 circom/
 
