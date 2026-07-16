@@ -1,7 +1,8 @@
 'use client'
 
-import { ArrowRight, Github } from 'lucide-react'
+import { ArrowRight, Github, Play } from 'lucide-react'
 import Balancer from 'react-wrap-balancer'
+import Image from 'next/image'
 
 export function Hero() {
   return (
@@ -33,11 +34,11 @@ export function Hero() {
 
           <div className="mt-8 flex items-center justify-center gap-4">
             <a
-              href="#"
+              href="#demo"
               className="inline-flex items-center gap-2 rounded-2xl bg-black px-6 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
             >
-              Book Demo
-              <ArrowRight className="h-4 w-4" />
+              <Play className="h-4 w-4" />
+              View Live Demo
             </a>
             <a
               href="https://github.com/BibekPathak/hsm-alt"
@@ -61,6 +62,19 @@ export function Hero() {
             <span className="flex items-center gap-1">
               FROST + Groth16
             </span>
+          </div>
+        </div>
+
+        <div className="mx-auto mt-16 max-w-4xl">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
+            <Image
+              src="/dashboard-preview.png"
+              alt="HSM Treasury Dashboard"
+              width={1200}
+              height={675}
+              className="w-full"
+              priority
+            />
           </div>
         </div>
       </div>

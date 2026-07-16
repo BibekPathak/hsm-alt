@@ -54,6 +54,7 @@ secrets/
 
 ui/dashboard/.next/
 ui/landing/.next/
+ui/landing/public/
 
 circom/
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Github, BookOpen } from 'lucide-react'
+import { Play, Github, BookOpen } from 'lucide-react'
 
 export function CTA() {
   return (
@@ -17,11 +17,11 @@ export function CTA() {
 
         <div className="mt-8 flex items-center justify-center gap-4">
           <a
-            href="#"
+            href="#demo"
             className="inline-flex items-center gap-2 rounded-2xl bg-black px-6 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
-            Book Demo
-            <ArrowRight className="h-4 w-4" />
+            <Play className="h-4 w-4" />
+            View Live Demo
           </a>
           <a
             href="https://github.com/BibekPathak/hsm-alt"
@@ -31,11 +31,11 @@ export function CTA() {
             GitHub
           </a>
           <a
-            href="#"
+            href="#quick-start"
             className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-6 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
           >
             <BookOpen className="h-4 w-4" />
-            Documentation
+            Quick Start
           </a>
         </div>
       </div>

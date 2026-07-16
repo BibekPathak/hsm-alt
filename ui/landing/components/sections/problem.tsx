@@ -32,7 +32,7 @@ export function Problem() {
       <div className="mx-auto max-w-page">
         <SectionTitle
           label="The Problem"
-          title="Traditional custody wasn't built for multi-chain operations."
+          title="Custody infrastructure wasn't built for programmable treasury operations."
           description="Legacy key management breaks when you need to move fast across multiple chains with compliance."
         />
 

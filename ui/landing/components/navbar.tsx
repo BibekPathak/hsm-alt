@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 const navLinks = [
   { href: '#features', label: 'Features' },
   { href: '#how-it-works', label: 'How It Works' },
+  { href: '#architecture', label: 'Architecture' },
+  { href: '#demo', label: 'Demo' },
   { href: '#security', label: 'Security' },
   { href: '#roadmap', label: 'Roadmap' },
 ]
@@ -34,10 +36,10 @@ export function Navbar() {
             </Link>
           ))}
           <Link
-            href="https://github.com/BibekPathak/hsm-alt"
+            href="#demo"
             className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
-            GitHub
+            Live Demo
           </Link>
         </div>
 
@@ -64,11 +66,11 @@ export function Navbar() {
               </Link>
             ))}
             <Link
-              href="https://github.com/BibekPathak/hsm-alt"
+              href="#demo"
               className="inline-flex items-center justify-center rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
               onClick={() => setMobileOpen(false)}
             >
-              GitHub
+              Live Demo
             </Link>
           </div>
         </div>
