@@ -1,8 +1,10 @@
 'use client'
 
-import { ArrowRight, Github, Play } from 'lucide-react'
+import { ArrowRight, Github, LayoutDashboard, Play } from 'lucide-react'
 import Balancer from 'react-wrap-balancer'
 import Image from 'next/image'
+
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'http://localhost:3001'
 
 export function Hero() {
   return (
@@ -39,6 +41,15 @@ export function Hero() {
             >
               <Play className="h-4 w-4" />
               View Live Demo
+            </a>
+            <a
+              href={DASHBOARD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-6 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
             </a>
             <a
               href="https://github.com/BibekPathak/hsm-alt"

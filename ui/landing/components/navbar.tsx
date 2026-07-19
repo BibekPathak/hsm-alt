@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Menu, X } from 'lucide-react'
+import { LayoutDashboard, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'http://localhost:3001'
 
 const navLinks = [
   { href: '#features', label: 'Features' },
@@ -25,23 +27,32 @@ export function Navbar() {
           <span className="text-sm font-semibold tracking-tight">HSM</span>
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="text-sm text-gray-600 transition-colors hover:text-black"
+          <div className="hidden items-center gap-8 md:flex">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-gray-600 transition-colors hover:text-black"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <a
+              href={DASHBOARD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-gray-600 transition-colors hover:text-black"
             >
-              {link.label}
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              Dashboard
+            </a>
+            <Link
+              href="#demo"
+              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Live Demo
             </Link>
-          ))}
-          <Link
-            href="#demo"
-            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Live Demo
-          </Link>
-        </div>
+          </div>
 
         <button
           className="md:hidden"
@@ -65,6 +76,16 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <a
+              href={DASHBOARD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
+              onClick={() => setMobileOpen(false)}
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              Dashboard
+            </a>
             <Link
               href="#demo"
               className="inline-flex items-center justify-center rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
