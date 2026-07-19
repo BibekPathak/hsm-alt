@@ -183,12 +183,15 @@ type PublicKeyResponse struct {
 type AggregateRequest struct {
 	Message           []byte            `json:"message"`
 	PartialSignatures map[uint32][]byte `json:"partial_signatures"`
+	UnsignedTx        []byte            `json:"unsigned_tx,omitempty"`
+	RpcURL            string            `json:"rpc_url,omitempty"`
 }
 
 type AggregateResponse struct {
 	Success   bool   `json:"success"`
 	Error     string `json:"error"`
 	Signature []byte `json:"signature"`
+	TxHash    string `json:"tx_hash"`
 }
 
 func (c *Client) doRequest(ctx context.Context, method, path string, reqBody, respBody interface{}) error {
@@ -416,22 +419,24 @@ func (c *Client) GetPubkeyPackage(ctx context.Context) ([]byte, error) {
 	return resp.PublicKey, nil
 }
 
-func (c *Client) AggregateSignatures(ctx context.Context, message []byte, partialSignatures map[uint32][]byte) ([]byte, error) {
+func (c *Client) AggregateSignatures(ctx context.Context, message []byte, partialSignatures map[uint32][]byte, unsignedTx []byte, rpcURL string) ([]byte, string, error) {
 	req := AggregateRequest{
 		Message:           message,
 		PartialSignatures: partialSignatures,
+		UnsignedTx:        unsignedTx,
+		RpcURL:            rpcURL,
 	}
 	resp := &AggregateResponse{}
 
 	if err := c.doRequest(ctx, "POST", "/aggregate", req, resp); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if !resp.Success {
-		return nil, fmt.Errorf("aggregate failed: %s", resp.Error)
+		return nil, "", fmt.Errorf("aggregate failed: %s", resp.Error)
 	}
 
-	return resp.Signature, nil
+	return resp.Signature, resp.TxHash, nil
 }
 
 func (c *Client) VerifySignature(ctx context.Context, signature, message []byte) (bool, error) {

@@ -199,8 +199,13 @@ func main() {
 
 			mpcCoordinator = &mpcSignCoordinator{orch: orch}
 			mpcSigner, _ := signer.NewMPCSolanaSigner(uint32(mpcNodeID), mpcClusterID, mpcCoordinator)
+			solanaRPCURL := os.Getenv("SOLANA_RPC")
+			if solanaRPCURL == "" {
+				solanaRPCURL = defaultSolanaRPCURL
+			}
+			mpcSigner.SetRPCURL(solanaRPCURL)
 			mpcSolanaSigner = mpcSigner
-			log.Printf("[MPC] MPC coordinator initialized for cluster %s, node %d", mpcClusterID, mpcNodeID)
+			log.Printf("[MPC] MPC coordinator initialized for cluster %s, node %d (RPC: %s)", mpcClusterID, mpcNodeID, solanaRPCURL)
 		} else {
 			log.Printf("[MPC] MPC_ENABLED=true but no MPC_PEERS set, skipping MPC initialization")
 		}
@@ -1354,12 +1359,12 @@ type mpcSignCoordinator struct {
 	orch *mpcnode.SignOrchestrator
 }
 
-func (c *mpcSignCoordinator) Sign(ctx context.Context, msg []byte) ([]byte, error) {
-	result, err := c.orch.SignMessage(ctx, msg)
+func (c *mpcSignCoordinator) Sign(ctx context.Context, msg []byte, unsignedTx []byte, rpcURL string) ([]byte, string, error) {
+	result, err := c.orch.SignMessage(ctx, msg, unsignedTx, rpcURL)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return result.Signature, nil
+	return result.Signature, result.TxHash, nil
 }
 
 func parseMPCPeers(peersStr string) map[uint32]string {

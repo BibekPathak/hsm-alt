@@ -38,6 +38,7 @@ type SignResult struct {
 	Signature []byte
 	SessionID string
 	Signers   []uint32
+	TxHash    string
 }
 
 func NewSignOrchestrator(cfg *config.NodeConfig, logger *zap.Logger) *SignOrchestrator {
@@ -97,7 +98,7 @@ type SignMessagePayload struct {
 	Data      []byte `json:"data"`
 }
 
-func (o *SignOrchestrator) SignMessage(ctx context.Context, message []byte) (*SignResult, error) {
+func (o *SignOrchestrator) SignMessage(ctx context.Context, message []byte, unsignedTx []byte, rpcURL string) (*SignResult, error) {
 	if len(o.peers) == 0 {
 		if err := o.ConnectToPeers(ctx); err != nil {
 			return nil, fmt.Errorf("failed to connect to peers: %w", err)
@@ -128,7 +129,7 @@ func (o *SignOrchestrator) SignMessage(ctx context.Context, message []byte) (*Si
 		return nil, fmt.Errorf("sign round 2 failed: %w", err)
 	}
 
-	finalSig, err := o.aggregateSignatures(ctx, message, sessionID, round2Results)
+	finalSig, txHash, err := o.aggregateSignatures(ctx, message, sessionID, round2Results, unsignedTx, rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("signature aggregation failed: %w", err)
 	}
@@ -137,6 +138,7 @@ func (o *SignOrchestrator) SignMessage(ctx context.Context, message []byte) (*Si
 		Signature: finalSig,
 		SessionID: sessionID,
 		Signers:   signers,
+		TxHash:    txHash,
 	}, nil
 }
 
@@ -258,8 +260,11 @@ func (o *SignOrchestrator) executeSignRound2(ctx context.Context, sessionID stri
 	return results, nil
 }
 
-func (o *SignOrchestrator) aggregateSignatures(ctx context.Context, message []byte, sessionID string, partialSigs map[uint32][]byte) ([]byte, error) {
-	results := make(chan []byte, 1)
+func (o *SignOrchestrator) aggregateSignatures(ctx context.Context, message []byte, sessionID string, partialSigs map[uint32][]byte, unsignedTx []byte, rpcURL string) ([]byte, string, error) {
+	results := make(chan struct {
+		sig    []byte
+		txHash string
+	}, 1)
 	errChan := make(chan error, 1)
 
 	go func() {
@@ -273,6 +278,8 @@ func (o *SignOrchestrator) aggregateSignatures(ctx context.Context, message []by
 			resp, err := peer.client.AggregateSignatures(ctx, &gen.AggregateRequest{
 				Message:           message,
 				PartialSignatures: partials,
+				UnsignedTx:        unsignedTx,
+				RpcUrl:            rpcURL,
 			})
 			if err != nil {
 				errChan <- err
@@ -280,7 +287,10 @@ func (o *SignOrchestrator) aggregateSignatures(ctx context.Context, message []by
 			}
 
 			if resp.Success {
-				results <- resp.Signature
+				results <- struct {
+					sig    []byte
+					txHash string
+				}{sig: resp.Signature, txHash: resp.TxHash}
 				return
 			}
 		}
@@ -289,11 +299,11 @@ func (o *SignOrchestrator) aggregateSignatures(ctx context.Context, message []by
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
-	case sig := <-results:
-		return sig, nil
+		return nil, "", ctx.Err()
+	case r := <-results:
+		return r.sig, r.txHash, nil
 	case err := <-errChan:
-		return nil, err
+		return nil, "", err
 	}
 }
 

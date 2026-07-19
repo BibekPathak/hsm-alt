@@ -422,7 +422,9 @@ func (s *MPCNodeServiceServer) TriggerSign(ctx context.Context, req *gen.Trigger
 func (s *MPCNodeServiceServer) AggregateSignatures(ctx context.Context, req *gen.AggregateRequest) (*gen.AggregateResponse, error) {
 	s.node.logger.Info("Received AggregateSignatures request",
 		zap.Binary("message", req.Message),
-		zap.Int("num_partials", len(req.PartialSignatures)))
+		zap.Int("num_partials", len(req.PartialSignatures)),
+		zap.Int("unsigned_tx_len", len(req.UnsignedTx)),
+	)
 
 	if s.node.enclave == nil {
 		return &gen.AggregateResponse{
@@ -432,7 +434,7 @@ func (s *MPCNodeServiceServer) AggregateSignatures(ctx context.Context, req *gen
 		}, nil
 	}
 
-	sig, err := s.node.enclave.AggregateSignatures(ctx, req.Message, req.PartialSignatures)
+	sig, txHash, err := s.node.enclave.AggregateSignatures(ctx, req.Message, req.PartialSignatures, req.UnsignedTx, req.RpcUrl)
 	if err != nil {
 		s.node.logger.Error("Aggregate failed", zap.Error(err))
 		return &gen.AggregateResponse{
@@ -443,12 +445,14 @@ func (s *MPCNodeServiceServer) AggregateSignatures(ctx context.Context, req *gen
 	}
 
 	s.node.logger.Info("Aggregation successful",
-		zap.Binary("signature", sig))
+		zap.Binary("signature", sig),
+		zap.String("tx_hash", txHash))
 
 	return &gen.AggregateResponse{
 		Success:   true,
 		Signature: sig,
 		Error:     "",
+		TxHash:    txHash,
 	}, nil
 }
 

@@ -220,7 +220,7 @@ func runSignCommand(args []string) {
 		msgBytes = []byte(*flagMessage)
 	}
 
-	result, err := orchestrator.SignMessage(ctx, msgBytes)
+	result, err := orchestrator.SignMessage(ctx, msgBytes, nil, "")
 	if err != nil {
 		logger.Error("Signing failed", zap.Error(err))
 		os.Exit(1)

@@ -1063,6 +1063,8 @@ struct PublicKeyResponse {
 struct AggregateRequest {
     message: Vec<u8>,
     partial_signatures: BTreeMap<u32, Vec<u8>>,
+    unsigned_tx: Option<Vec<u8>>,
+    rpc_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1070,6 +1072,7 @@ struct AggregateResponse {
     success: bool,
     error: String,
     signature: Vec<u8>,
+    tx_hash: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1272,19 +1275,108 @@ async fn aggregate_signatures(
     State(state): State<AppState>,
     Json(req): Json<AggregateRequest>,
 ) -> Json<AggregateResponse> {
-    let enclave = state.enclave.read();
-    match enclave.aggregate_signatures(req.message, req.partial_signatures) {
-        Ok(sig) => Json(AggregateResponse {
-            success: true,
-            error: String::new(),
-            signature: sig,
-        }),
+    let sig_result = {
+        let enclave = state.enclave.read();
+        enclave.aggregate_signatures(req.message.clone(), req.partial_signatures)
+    };
+
+    match sig_result {
+        Ok(sig) => {
+            let tx_hash = if let (Some(unsigned_tx), Some(rpc_url)) = (req.unsigned_tx, req.rpc_url) {
+                if !rpc_url.is_empty() && !unsigned_tx.is_empty() {
+                    match broadcast_signed_transaction(sig.clone(), unsigned_tx, rpc_url).await {
+                        Ok(hash) => hash,
+                        Err(e) => {
+                            return Json(AggregateResponse {
+                                success: false,
+                                error: format!("broadcast failed: {}", e),
+                                signature: vec![],
+                                tx_hash: String::new(),
+                            });
+                        }
+                    }
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            Json(AggregateResponse {
+                success: true,
+                error: String::new(),
+                signature: sig,
+                tx_hash,
+            })
+        }
         Err(e) => Json(AggregateResponse {
             success: false,
             error: e,
             signature: vec![],
+            tx_hash: String::new(),
         }),
     }
+}
+
+async fn broadcast_signed_transaction(
+    signature: Vec<u8>,
+    unsigned_tx: Vec<u8>,
+    rpc_url: String,
+) -> Result<String, String> {
+    if signature.len() != 64 {
+        return Err("signature must be 64 bytes".to_string());
+    }
+
+    // Construct signed tx: [0x01 (compact array len)][64-byte sig][message bytes]
+    let mut signed_tx = Vec::with_capacity(1 + 64 + unsigned_tx.len());
+    signed_tx.push(0x01);
+    signed_tx.extend_from_slice(&signature);
+    signed_tx.extend_from_slice(&unsigned_tx);
+
+    // Base58 encode the signed transaction
+    let encoded = bs58::encode(&signed_tx).into_string();
+
+    // Build JSON-RPC request
+    let rpc_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "sendTransaction",
+        "params": [encoded]
+    });
+    let body = serde_json::to_string(&rpc_request)
+        .map_err(|e| format!("failed to serialize request: {}", e))?;
+
+    // Use spawn_blocking for the synchronous ureq call
+    let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let resp = ureq::post(&rpc_url)
+            .header("Content-Type", "application/json")
+            .send(body.as_bytes())
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        let status = resp.status();
+        let resp_text = resp.into_body().read_to_string()
+            .map_err(|e| format!("failed to read response: {}", e))?;
+        let resp_body: serde_json::Value = serde_json::from_str(&resp_text)
+            .map_err(|e| format!("failed to parse response: {}", e))?;
+
+        if status != 200 {
+            return Err(format!("RPC returned status {}: {:?}", status, resp_body));
+        }
+
+        if let Some(err) = resp_body.get("error") {
+            return Err(format!("RPC error: {:?}", err));
+        }
+
+        resp_body
+            .get("result")
+            .and_then(|v: &serde_json::Value| v.as_str())
+            .map(|s: &str| s.to_string())
+            .ok_or_else(|| format!("no result in RPC response: {:?}", resp_body))
+    })
+    .await
+    .map_err(|e| format!("blocking task failed: {}", e))?;
+
+    result
 }
 
 async fn verify_signature(State(state): State<AppState>, Json(req): Json<VerifyRequest>) -> Json<VerifyResponse> {

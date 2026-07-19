@@ -710,7 +710,8 @@ func (n *MPCNode) doAggregate(ctx context.Context, message []byte, partialSignat
 		zap.Int("available", len(availableAggregators)))
 
 	if aggregatorNode == n.config.NodeID {
-		return n.enclave.AggregateSignatures(ctx, message, partialSignatures)
+		sig, _, err := n.enclave.AggregateSignatures(ctx, message, partialSignatures, nil, "")
+		return sig, err
 	}
 
 	peer, ok := n.peers[aggregatorNode]

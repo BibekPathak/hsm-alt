@@ -92,6 +92,21 @@ func (s *Service) SendSolanaTransaction(ctx context.Context, chain string, from,
 		return "", fmt.Errorf("failed to build tx: %w", err)
 	}
 
+	// Check if this is an MPC signer that handles broadcast internally
+	if mpc, ok := solanaSigner.(interface{ IsMPCBroadcast() bool }); ok && mpc.IsMPCBroadcast() {
+		txHashBytes, err := solanaSigner.SignTransaction(unsignedTx)
+		if err != nil {
+			return "", fmt.Errorf("MPC sign+broadcast failed: %w", err)
+		}
+		txHash := string(txHashBytes)
+		if confirm {
+			if err := builder.ConfirmTransaction(ctx, txHash); err != nil {
+				return txHash, fmt.Errorf("tx sent but confirmation failed: %w", err)
+			}
+		}
+		return txHash, nil
+	}
+
 	signature, err := solanaSigner.SignTransaction(unsignedTx)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
@@ -233,6 +248,27 @@ func (s *Service) SendSPLTransaction(ctx context.Context, chain, mint, to string
 		return ``, fmt.Errorf(`failed to build spl tx: %w`, err)
 	}
 	log.Printf(`[SPL-SERVICE] Transaction built: %d bytes`, len(unsignedTx))
+
+	// Check if this is an MPC signer that handles broadcast internally
+	if mpc, ok := solanaSigner.(interface{ IsMPCBroadcast() bool }); ok && mpc.IsMPCBroadcast() {
+		log.Printf(`[SPL-SERVICE] MPC signer detected, using enclave broadcast...`)
+		txHashBytes, err := solanaSigner.SignTransaction(unsignedTx)
+		if err != nil {
+			log.Printf(`[SPL-SERVICE] ERROR: MPC sign+broadcast failed: %v`, err)
+			return ``, fmt.Errorf(`MPC sign+broadcast failed: %w`, err)
+		}
+		txHash := string(txHashBytes)
+		log.Printf(`[SPL-SERVICE] MPC broadcast completed: %s`, txHash)
+		if confirm {
+			log.Printf(`[SPL-SERVICE] Waiting for confirmation...`)
+			if err := builder.ConfirmTransaction(ctx, txHash); err != nil {
+				log.Printf(`[SPL-SERVICE] ERROR: ConfirmTransaction failed: %v`, err)
+				return txHash, fmt.Errorf(`tx sent but confirmation failed: %w`, err)
+			}
+			log.Printf(`[SPL-SERVICE] Transaction confirmed!`)
+		}
+		return txHash, nil
+	}
 
 	log.Printf(`[SPL-SERVICE] Signing transaction...`)
 	signature, err := solanaSigner.SignTransaction(unsignedTx)

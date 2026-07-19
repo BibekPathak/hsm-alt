@@ -242,12 +242,15 @@ message DirectMessageResponse {
 message AggregateRequest {
     bytes message = 1;
     map<uint32, bytes> partial_signatures = 2;
+    bytes unsigned_tx = 3;
+    string rpc_url = 4;
 }
 
 message AggregateResponse {
     bool success = 1;
     bytes signature = 2;
     string error = 3;
+    string tx_hash = 4;
 }
 
 message AbortSignRequest {

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.33.1
-// source: mpc.proto
+// source: api/mpc.proto
 
 package gen
 
@@ -33,7 +33,7 @@ type InitRequest struct {
 
 func (x *InitRequest) Reset() {
 	*x = InitRequest{}
-	mi := &file_mpc_proto_msgTypes[0]
+	mi := &file_api_mpc_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +45,7 @@ func (x *InitRequest) String() string {
 func (*InitRequest) ProtoMessage() {}
 
 func (x *InitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[0]
+	mi := &file_api_mpc_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +58,7 @@ func (x *InitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitRequest.ProtoReflect.Descriptor instead.
 func (*InitRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{0}
+	return file_api_mpc_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *InitRequest) GetNodeId() uint32 {
@@ -99,7 +99,7 @@ type InitResponse struct {
 
 func (x *InitResponse) Reset() {
 	*x = InitResponse{}
-	mi := &file_mpc_proto_msgTypes[1]
+	mi := &file_api_mpc_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -111,7 +111,7 @@ func (x *InitResponse) String() string {
 func (*InitResponse) ProtoMessage() {}
 
 func (x *InitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[1]
+	mi := &file_api_mpc_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -124,7 +124,7 @@ func (x *InitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitResponse.ProtoReflect.Descriptor instead.
 func (*InitResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{1}
+	return file_api_mpc_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *InitResponse) GetSuccess() bool {
@@ -149,7 +149,7 @@ type StatusRequest struct {
 
 func (x *StatusRequest) Reset() {
 	*x = StatusRequest{}
-	mi := &file_mpc_proto_msgTypes[2]
+	mi := &file_api_mpc_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +161,7 @@ func (x *StatusRequest) String() string {
 func (*StatusRequest) ProtoMessage() {}
 
 func (x *StatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[2]
+	mi := &file_api_mpc_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +174,7 @@ func (x *StatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{2}
+	return file_api_mpc_proto_rawDescGZIP(), []int{2}
 }
 
 type StatusResponse struct {
@@ -191,7 +191,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_mpc_proto_msgTypes[3]
+	mi := &file_api_mpc_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -203,7 +203,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[3]
+	mi := &file_api_mpc_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -216,7 +216,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{3}
+	return file_api_mpc_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StatusResponse) GetState() string {
@@ -271,7 +271,7 @@ type DKGStartRequest struct {
 
 func (x *DKGStartRequest) Reset() {
 	*x = DKGStartRequest{}
-	mi := &file_mpc_proto_msgTypes[4]
+	mi := &file_api_mpc_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -283,7 +283,7 @@ func (x *DKGStartRequest) String() string {
 func (*DKGStartRequest) ProtoMessage() {}
 
 func (x *DKGStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[4]
+	mi := &file_api_mpc_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -296,7 +296,7 @@ func (x *DKGStartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGStartRequest.ProtoReflect.Descriptor instead.
 func (*DKGStartRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{4}
+	return file_api_mpc_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DKGStartRequest) GetMinSigners() uint32 {
@@ -325,7 +325,7 @@ type DKGStartResponse struct {
 
 func (x *DKGStartResponse) Reset() {
 	*x = DKGStartResponse{}
-	mi := &file_mpc_proto_msgTypes[5]
+	mi := &file_api_mpc_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +337,7 @@ func (x *DKGStartResponse) String() string {
 func (*DKGStartResponse) ProtoMessage() {}
 
 func (x *DKGStartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[5]
+	mi := &file_api_mpc_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +350,7 @@ func (x *DKGStartResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGStartResponse.ProtoReflect.Descriptor instead.
 func (*DKGStartResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{5}
+	return file_api_mpc_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DKGStartResponse) GetSuccess() bool {
@@ -391,7 +391,7 @@ type DKGRound1Request struct {
 
 func (x *DKGRound1Request) Reset() {
 	*x = DKGRound1Request{}
-	mi := &file_mpc_proto_msgTypes[6]
+	mi := &file_api_mpc_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +403,7 @@ func (x *DKGRound1Request) String() string {
 func (*DKGRound1Request) ProtoMessage() {}
 
 func (x *DKGRound1Request) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[6]
+	mi := &file_api_mpc_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +416,7 @@ func (x *DKGRound1Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGRound1Request.ProtoReflect.Descriptor instead.
 func (*DKGRound1Request) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{6}
+	return file_api_mpc_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DKGRound1Request) GetFromNode() uint32 {
@@ -446,7 +446,7 @@ type DKGRound1Response struct {
 
 func (x *DKGRound1Response) Reset() {
 	*x = DKGRound1Response{}
-	mi := &file_mpc_proto_msgTypes[7]
+	mi := &file_api_mpc_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -458,7 +458,7 @@ func (x *DKGRound1Response) String() string {
 func (*DKGRound1Response) ProtoMessage() {}
 
 func (x *DKGRound1Response) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[7]
+	mi := &file_api_mpc_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -471,7 +471,7 @@ func (x *DKGRound1Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGRound1Response.ProtoReflect.Descriptor instead.
 func (*DKGRound1Response) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{7}
+	return file_api_mpc_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DKGRound1Response) GetSuccess() bool {
@@ -518,7 +518,7 @@ type DKGRound2Request struct {
 
 func (x *DKGRound2Request) Reset() {
 	*x = DKGRound2Request{}
-	mi := &file_mpc_proto_msgTypes[8]
+	mi := &file_api_mpc_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -530,7 +530,7 @@ func (x *DKGRound2Request) String() string {
 func (*DKGRound2Request) ProtoMessage() {}
 
 func (x *DKGRound2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[8]
+	mi := &file_api_mpc_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -543,7 +543,7 @@ func (x *DKGRound2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGRound2Request.ProtoReflect.Descriptor instead.
 func (*DKGRound2Request) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{8}
+	return file_api_mpc_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DKGRound2Request) GetParticipantShares() map[uint32][]byte {
@@ -564,7 +564,7 @@ type DKGRound2Response struct {
 
 func (x *DKGRound2Response) Reset() {
 	*x = DKGRound2Response{}
-	mi := &file_mpc_proto_msgTypes[9]
+	mi := &file_api_mpc_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -576,7 +576,7 @@ func (x *DKGRound2Response) String() string {
 func (*DKGRound2Response) ProtoMessage() {}
 
 func (x *DKGRound2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[9]
+	mi := &file_api_mpc_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -589,7 +589,7 @@ func (x *DKGRound2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGRound2Response.ProtoReflect.Descriptor instead.
 func (*DKGRound2Response) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{9}
+	return file_api_mpc_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DKGRound2Response) GetSuccess() bool {
@@ -621,7 +621,7 @@ type DKGCompleteRequest struct {
 
 func (x *DKGCompleteRequest) Reset() {
 	*x = DKGCompleteRequest{}
-	mi := &file_mpc_proto_msgTypes[10]
+	mi := &file_api_mpc_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -633,7 +633,7 @@ func (x *DKGCompleteRequest) String() string {
 func (*DKGCompleteRequest) ProtoMessage() {}
 
 func (x *DKGCompleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[10]
+	mi := &file_api_mpc_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -646,7 +646,7 @@ func (x *DKGCompleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGCompleteRequest.ProtoReflect.Descriptor instead.
 func (*DKGCompleteRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{10}
+	return file_api_mpc_proto_rawDescGZIP(), []int{10}
 }
 
 type DKGCompleteResponse struct {
@@ -660,7 +660,7 @@ type DKGCompleteResponse struct {
 
 func (x *DKGCompleteResponse) Reset() {
 	*x = DKGCompleteResponse{}
-	mi := &file_mpc_proto_msgTypes[11]
+	mi := &file_api_mpc_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -672,7 +672,7 @@ func (x *DKGCompleteResponse) String() string {
 func (*DKGCompleteResponse) ProtoMessage() {}
 
 func (x *DKGCompleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[11]
+	mi := &file_api_mpc_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -685,7 +685,7 @@ func (x *DKGCompleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DKGCompleteResponse.ProtoReflect.Descriptor instead.
 func (*DKGCompleteResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{11}
+	return file_api_mpc_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DKGCompleteResponse) GetSuccess() bool {
@@ -719,7 +719,7 @@ type SignStartRequest struct {
 
 func (x *SignStartRequest) Reset() {
 	*x = SignStartRequest{}
-	mi := &file_mpc_proto_msgTypes[12]
+	mi := &file_api_mpc_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +731,7 @@ func (x *SignStartRequest) String() string {
 func (*SignStartRequest) ProtoMessage() {}
 
 func (x *SignStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[12]
+	mi := &file_api_mpc_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +744,7 @@ func (x *SignStartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignStartRequest.ProtoReflect.Descriptor instead.
 func (*SignStartRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{12}
+	return file_api_mpc_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SignStartRequest) GetMessage() []byte {
@@ -772,7 +772,7 @@ type SignStartResponse struct {
 
 func (x *SignStartResponse) Reset() {
 	*x = SignStartResponse{}
-	mi := &file_mpc_proto_msgTypes[13]
+	mi := &file_api_mpc_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -784,7 +784,7 @@ func (x *SignStartResponse) String() string {
 func (*SignStartResponse) ProtoMessage() {}
 
 func (x *SignStartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[13]
+	mi := &file_api_mpc_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -797,7 +797,7 @@ func (x *SignStartResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignStartResponse.ProtoReflect.Descriptor instead.
 func (*SignStartResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{13}
+	return file_api_mpc_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SignStartResponse) GetSuccess() bool {
@@ -829,7 +829,7 @@ type SignRound1Request struct {
 
 func (x *SignRound1Request) Reset() {
 	*x = SignRound1Request{}
-	mi := &file_mpc_proto_msgTypes[14]
+	mi := &file_api_mpc_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +841,7 @@ func (x *SignRound1Request) String() string {
 func (*SignRound1Request) ProtoMessage() {}
 
 func (x *SignRound1Request) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[14]
+	mi := &file_api_mpc_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +854,7 @@ func (x *SignRound1Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRound1Request.ProtoReflect.Descriptor instead.
 func (*SignRound1Request) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{14}
+	return file_api_mpc_proto_rawDescGZIP(), []int{14}
 }
 
 type SignRound1Response struct {
@@ -869,7 +869,7 @@ type SignRound1Response struct {
 
 func (x *SignRound1Response) Reset() {
 	*x = SignRound1Response{}
-	mi := &file_mpc_proto_msgTypes[15]
+	mi := &file_api_mpc_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +881,7 @@ func (x *SignRound1Response) String() string {
 func (*SignRound1Response) ProtoMessage() {}
 
 func (x *SignRound1Response) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[15]
+	mi := &file_api_mpc_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +894,7 @@ func (x *SignRound1Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRound1Response.ProtoReflect.Descriptor instead.
 func (*SignRound1Response) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{15}
+	return file_api_mpc_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SignRound1Response) GetSuccess() bool {
@@ -934,7 +934,7 @@ type SignRound2Request struct {
 
 func (x *SignRound2Request) Reset() {
 	*x = SignRound2Request{}
-	mi := &file_mpc_proto_msgTypes[16]
+	mi := &file_api_mpc_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -946,7 +946,7 @@ func (x *SignRound2Request) String() string {
 func (*SignRound2Request) ProtoMessage() {}
 
 func (x *SignRound2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[16]
+	mi := &file_api_mpc_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -959,7 +959,7 @@ func (x *SignRound2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRound2Request.ProtoReflect.Descriptor instead.
 func (*SignRound2Request) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{16}
+	return file_api_mpc_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SignRound2Request) GetSigningPackage() []byte {
@@ -981,7 +981,7 @@ type SignRound2Response struct {
 
 func (x *SignRound2Response) Reset() {
 	*x = SignRound2Response{}
-	mi := &file_mpc_proto_msgTypes[17]
+	mi := &file_api_mpc_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -993,7 +993,7 @@ func (x *SignRound2Response) String() string {
 func (*SignRound2Response) ProtoMessage() {}
 
 func (x *SignRound2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[17]
+	mi := &file_api_mpc_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1006,7 +1006,7 @@ func (x *SignRound2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRound2Response.ProtoReflect.Descriptor instead.
 func (*SignRound2Response) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{17}
+	return file_api_mpc_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SignRound2Response) GetSuccess() bool {
@@ -1045,7 +1045,7 @@ type PublicKeyRequest struct {
 
 func (x *PublicKeyRequest) Reset() {
 	*x = PublicKeyRequest{}
-	mi := &file_mpc_proto_msgTypes[18]
+	mi := &file_api_mpc_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1057,7 +1057,7 @@ func (x *PublicKeyRequest) String() string {
 func (*PublicKeyRequest) ProtoMessage() {}
 
 func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[18]
+	mi := &file_api_mpc_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1070,7 +1070,7 @@ func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyRequest.ProtoReflect.Descriptor instead.
 func (*PublicKeyRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{18}
+	return file_api_mpc_proto_rawDescGZIP(), []int{18}
 }
 
 type PublicKeyResponse struct {
@@ -1082,7 +1082,7 @@ type PublicKeyResponse struct {
 
 func (x *PublicKeyResponse) Reset() {
 	*x = PublicKeyResponse{}
-	mi := &file_mpc_proto_msgTypes[19]
+	mi := &file_api_mpc_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1094,7 +1094,7 @@ func (x *PublicKeyResponse) String() string {
 func (*PublicKeyResponse) ProtoMessage() {}
 
 func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[19]
+	mi := &file_api_mpc_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1107,7 +1107,7 @@ func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyResponse.ProtoReflect.Descriptor instead.
 func (*PublicKeyResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{19}
+	return file_api_mpc_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PublicKeyResponse) GetPublicKey() []byte {
@@ -1125,7 +1125,7 @@ type KeyShareRequest struct {
 
 func (x *KeyShareRequest) Reset() {
 	*x = KeyShareRequest{}
-	mi := &file_mpc_proto_msgTypes[20]
+	mi := &file_api_mpc_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +1137,7 @@ func (x *KeyShareRequest) String() string {
 func (*KeyShareRequest) ProtoMessage() {}
 
 func (x *KeyShareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[20]
+	mi := &file_api_mpc_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1150,7 @@ func (x *KeyShareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyShareRequest.ProtoReflect.Descriptor instead.
 func (*KeyShareRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{20}
+	return file_api_mpc_proto_rawDescGZIP(), []int{20}
 }
 
 type KeyShareResponse struct {
@@ -1163,7 +1163,7 @@ type KeyShareResponse struct {
 
 func (x *KeyShareResponse) Reset() {
 	*x = KeyShareResponse{}
-	mi := &file_mpc_proto_msgTypes[21]
+	mi := &file_api_mpc_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1175,7 @@ func (x *KeyShareResponse) String() string {
 func (*KeyShareResponse) ProtoMessage() {}
 
 func (x *KeyShareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[21]
+	mi := &file_api_mpc_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1188,7 @@ func (x *KeyShareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyShareResponse.ProtoReflect.Descriptor instead.
 func (*KeyShareResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{21}
+	return file_api_mpc_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *KeyShareResponse) GetKeyShare() []byte {
@@ -1213,7 +1213,7 @@ type EpochRequest struct {
 
 func (x *EpochRequest) Reset() {
 	*x = EpochRequest{}
-	mi := &file_mpc_proto_msgTypes[22]
+	mi := &file_api_mpc_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1225,7 @@ func (x *EpochRequest) String() string {
 func (*EpochRequest) ProtoMessage() {}
 
 func (x *EpochRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[22]
+	mi := &file_api_mpc_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1238,7 @@ func (x *EpochRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochRequest.ProtoReflect.Descriptor instead.
 func (*EpochRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{22}
+	return file_api_mpc_proto_rawDescGZIP(), []int{22}
 }
 
 type EpochResponse struct {
@@ -1253,7 +1253,7 @@ type EpochResponse struct {
 
 func (x *EpochResponse) Reset() {
 	*x = EpochResponse{}
-	mi := &file_mpc_proto_msgTypes[23]
+	mi := &file_api_mpc_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1265,7 +1265,7 @@ func (x *EpochResponse) String() string {
 func (*EpochResponse) ProtoMessage() {}
 
 func (x *EpochResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[23]
+	mi := &file_api_mpc_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1278,7 +1278,7 @@ func (x *EpochResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochResponse.ProtoReflect.Descriptor instead.
 func (*EpochResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{23}
+	return file_api_mpc_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *EpochResponse) GetSuccess() bool {
@@ -1319,7 +1319,7 @@ type ReshareRequest struct {
 
 func (x *ReshareRequest) Reset() {
 	*x = ReshareRequest{}
-	mi := &file_mpc_proto_msgTypes[24]
+	mi := &file_api_mpc_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1331,7 @@ func (x *ReshareRequest) String() string {
 func (*ReshareRequest) ProtoMessage() {}
 
 func (x *ReshareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[24]
+	mi := &file_api_mpc_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1344,7 @@ func (x *ReshareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReshareRequest.ProtoReflect.Descriptor instead.
 func (*ReshareRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{24}
+	return file_api_mpc_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReshareRequest) GetNewThreshold() uint32 {
@@ -1372,7 +1372,7 @@ type ReshareResponse struct {
 
 func (x *ReshareResponse) Reset() {
 	*x = ReshareResponse{}
-	mi := &file_mpc_proto_msgTypes[25]
+	mi := &file_api_mpc_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1384,7 +1384,7 @@ func (x *ReshareResponse) String() string {
 func (*ReshareResponse) ProtoMessage() {}
 
 func (x *ReshareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[25]
+	mi := &file_api_mpc_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1397,7 +1397,7 @@ func (x *ReshareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReshareResponse.ProtoReflect.Descriptor instead.
 func (*ReshareResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{25}
+	return file_api_mpc_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ReshareResponse) GetSuccess() bool {
@@ -1429,7 +1429,7 @@ type AttestRequest struct {
 
 func (x *AttestRequest) Reset() {
 	*x = AttestRequest{}
-	mi := &file_mpc_proto_msgTypes[26]
+	mi := &file_api_mpc_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1441,7 +1441,7 @@ func (x *AttestRequest) String() string {
 func (*AttestRequest) ProtoMessage() {}
 
 func (x *AttestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[26]
+	mi := &file_api_mpc_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1454,7 +1454,7 @@ func (x *AttestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestRequest.ProtoReflect.Descriptor instead.
 func (*AttestRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{26}
+	return file_api_mpc_proto_rawDescGZIP(), []int{26}
 }
 
 type AttestResponse struct {
@@ -1467,7 +1467,7 @@ type AttestResponse struct {
 
 func (x *AttestResponse) Reset() {
 	*x = AttestResponse{}
-	mi := &file_mpc_proto_msgTypes[27]
+	mi := &file_api_mpc_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1479,7 +1479,7 @@ func (x *AttestResponse) String() string {
 func (*AttestResponse) ProtoMessage() {}
 
 func (x *AttestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[27]
+	mi := &file_api_mpc_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1492,7 +1492,7 @@ func (x *AttestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestResponse.ProtoReflect.Descriptor instead.
 func (*AttestResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{27}
+	return file_api_mpc_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AttestResponse) GetQuote() []byte {
@@ -1520,7 +1520,7 @@ type HandshakeRequest struct {
 
 func (x *HandshakeRequest) Reset() {
 	*x = HandshakeRequest{}
-	mi := &file_mpc_proto_msgTypes[28]
+	mi := &file_api_mpc_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1532,7 +1532,7 @@ func (x *HandshakeRequest) String() string {
 func (*HandshakeRequest) ProtoMessage() {}
 
 func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[28]
+	mi := &file_api_mpc_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1545,7 +1545,7 @@ func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandshakeRequest.ProtoReflect.Descriptor instead.
 func (*HandshakeRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{28}
+	return file_api_mpc_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *HandshakeRequest) GetNodeId() uint32 {
@@ -1581,7 +1581,7 @@ type HandshakeResponse struct {
 
 func (x *HandshakeResponse) Reset() {
 	*x = HandshakeResponse{}
-	mi := &file_mpc_proto_msgTypes[29]
+	mi := &file_api_mpc_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1593,7 +1593,7 @@ func (x *HandshakeResponse) String() string {
 func (*HandshakeResponse) ProtoMessage() {}
 
 func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[29]
+	mi := &file_api_mpc_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1606,7 +1606,7 @@ func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandshakeResponse.ProtoReflect.Descriptor instead.
 func (*HandshakeResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{29}
+	return file_api_mpc_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *HandshakeResponse) GetAccepted() bool {
@@ -1650,7 +1650,7 @@ type NodeMessage struct {
 
 func (x *NodeMessage) Reset() {
 	*x = NodeMessage{}
-	mi := &file_mpc_proto_msgTypes[30]
+	mi := &file_api_mpc_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1662,7 +1662,7 @@ func (x *NodeMessage) String() string {
 func (*NodeMessage) ProtoMessage() {}
 
 func (x *NodeMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[30]
+	mi := &file_api_mpc_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1675,7 +1675,7 @@ func (x *NodeMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeMessage.ProtoReflect.Descriptor instead.
 func (*NodeMessage) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{30}
+	return file_api_mpc_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *NodeMessage) GetMessageType() string {
@@ -1723,7 +1723,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_mpc_proto_msgTypes[31]
+	mi := &file_api_mpc_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1735,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[31]
+	mi := &file_api_mpc_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1748,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{31}
+	return file_api_mpc_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *HeartbeatRequest) GetNodeId() uint32 {
@@ -1776,7 +1776,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_mpc_proto_msgTypes[32]
+	mi := &file_api_mpc_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1788,7 +1788,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[32]
+	mi := &file_api_mpc_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1801,7 +1801,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{32}
+	return file_api_mpc_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *HeartbeatResponse) GetNodeId() uint32 {
@@ -1836,7 +1836,7 @@ type TriggerSignRequest struct {
 
 func (x *TriggerSignRequest) Reset() {
 	*x = TriggerSignRequest{}
-	mi := &file_mpc_proto_msgTypes[33]
+	mi := &file_api_mpc_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1848,7 +1848,7 @@ func (x *TriggerSignRequest) String() string {
 func (*TriggerSignRequest) ProtoMessage() {}
 
 func (x *TriggerSignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[33]
+	mi := &file_api_mpc_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1861,7 +1861,7 @@ func (x *TriggerSignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerSignRequest.ProtoReflect.Descriptor instead.
 func (*TriggerSignRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{33}
+	return file_api_mpc_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TriggerSignRequest) GetMessage() []byte {
@@ -1896,7 +1896,7 @@ type TriggerSignResponse struct {
 
 func (x *TriggerSignResponse) Reset() {
 	*x = TriggerSignResponse{}
-	mi := &file_mpc_proto_msgTypes[34]
+	mi := &file_api_mpc_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1908,7 +1908,7 @@ func (x *TriggerSignResponse) String() string {
 func (*TriggerSignResponse) ProtoMessage() {}
 
 func (x *TriggerSignResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[34]
+	mi := &file_api_mpc_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1921,7 +1921,7 @@ func (x *TriggerSignResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerSignResponse.ProtoReflect.Descriptor instead.
 func (*TriggerSignResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{34}
+	return file_api_mpc_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *TriggerSignResponse) GetAccepted() bool {
@@ -1958,7 +1958,7 @@ type DirectMessageRequest struct {
 
 func (x *DirectMessageRequest) Reset() {
 	*x = DirectMessageRequest{}
-	mi := &file_mpc_proto_msgTypes[35]
+	mi := &file_api_mpc_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1970,7 +1970,7 @@ func (x *DirectMessageRequest) String() string {
 func (*DirectMessageRequest) ProtoMessage() {}
 
 func (x *DirectMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[35]
+	mi := &file_api_mpc_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1983,7 +1983,7 @@ func (x *DirectMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectMessageRequest.ProtoReflect.Descriptor instead.
 func (*DirectMessageRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{35}
+	return file_api_mpc_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DirectMessageRequest) GetSessionId() string {
@@ -2032,7 +2032,7 @@ type DirectMessageResponse struct {
 
 func (x *DirectMessageResponse) Reset() {
 	*x = DirectMessageResponse{}
-	mi := &file_mpc_proto_msgTypes[36]
+	mi := &file_api_mpc_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2044,7 +2044,7 @@ func (x *DirectMessageResponse) String() string {
 func (*DirectMessageResponse) ProtoMessage() {}
 
 func (x *DirectMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[36]
+	mi := &file_api_mpc_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2057,7 +2057,7 @@ func (x *DirectMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectMessageResponse.ProtoReflect.Descriptor instead.
 func (*DirectMessageResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{36}
+	return file_api_mpc_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DirectMessageResponse) GetSuccess() bool {
@@ -2093,7 +2093,7 @@ type AggregateRequest struct {
 
 func (x *AggregateRequest) Reset() {
 	*x = AggregateRequest{}
-	mi := &file_mpc_proto_msgTypes[37]
+	mi := &file_api_mpc_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2105,7 @@ func (x *AggregateRequest) String() string {
 func (*AggregateRequest) ProtoMessage() {}
 
 func (x *AggregateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[37]
+	mi := &file_api_mpc_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2118,7 @@ func (x *AggregateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateRequest.ProtoReflect.Descriptor instead.
 func (*AggregateRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{37}
+	return file_api_mpc_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AggregateRequest) GetMessage() []byte {
@@ -2161,7 +2161,7 @@ type AggregateResponse struct {
 
 func (x *AggregateResponse) Reset() {
 	*x = AggregateResponse{}
-	mi := &file_mpc_proto_msgTypes[38]
+	mi := &file_api_mpc_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2173,7 +2173,7 @@ func (x *AggregateResponse) String() string {
 func (*AggregateResponse) ProtoMessage() {}
 
 func (x *AggregateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[38]
+	mi := &file_api_mpc_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2186,7 +2186,7 @@ func (x *AggregateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateResponse.ProtoReflect.Descriptor instead.
 func (*AggregateResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{38}
+	return file_api_mpc_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AggregateResponse) GetSuccess() bool {
@@ -2226,7 +2226,7 @@ type AbortSignRequest struct {
 
 func (x *AbortSignRequest) Reset() {
 	*x = AbortSignRequest{}
-	mi := &file_mpc_proto_msgTypes[39]
+	mi := &file_api_mpc_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2238,7 +2238,7 @@ func (x *AbortSignRequest) String() string {
 func (*AbortSignRequest) ProtoMessage() {}
 
 func (x *AbortSignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[39]
+	mi := &file_api_mpc_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2251,7 +2251,7 @@ func (x *AbortSignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortSignRequest.ProtoReflect.Descriptor instead.
 func (*AbortSignRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{39}
+	return file_api_mpc_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AbortSignRequest) GetSessionId() string {
@@ -2271,7 +2271,7 @@ type AbortSignResponse struct {
 
 func (x *AbortSignResponse) Reset() {
 	*x = AbortSignResponse{}
-	mi := &file_mpc_proto_msgTypes[40]
+	mi := &file_api_mpc_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2283,7 +2283,7 @@ func (x *AbortSignResponse) String() string {
 func (*AbortSignResponse) ProtoMessage() {}
 
 func (x *AbortSignResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[40]
+	mi := &file_api_mpc_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2296,7 +2296,7 @@ func (x *AbortSignResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortSignResponse.ProtoReflect.Descriptor instead.
 func (*AbortSignResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{40}
+	return file_api_mpc_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AbortSignResponse) GetSuccess() bool {
@@ -2324,7 +2324,7 @@ type CreateClusterRequest struct {
 
 func (x *CreateClusterRequest) Reset() {
 	*x = CreateClusterRequest{}
-	mi := &file_mpc_proto_msgTypes[41]
+	mi := &file_api_mpc_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2336,7 @@ func (x *CreateClusterRequest) String() string {
 func (*CreateClusterRequest) ProtoMessage() {}
 
 func (x *CreateClusterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[41]
+	mi := &file_api_mpc_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2349,7 @@ func (x *CreateClusterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterRequest.ProtoReflect.Descriptor instead.
 func (*CreateClusterRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{41}
+	return file_api_mpc_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *CreateClusterRequest) GetClusterId() string {
@@ -2384,7 +2384,7 @@ type CreateClusterResponse struct {
 
 func (x *CreateClusterResponse) Reset() {
 	*x = CreateClusterResponse{}
-	mi := &file_mpc_proto_msgTypes[42]
+	mi := &file_api_mpc_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2396,7 +2396,7 @@ func (x *CreateClusterResponse) String() string {
 func (*CreateClusterResponse) ProtoMessage() {}
 
 func (x *CreateClusterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[42]
+	mi := &file_api_mpc_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2409,7 +2409,7 @@ func (x *CreateClusterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterResponse.ProtoReflect.Descriptor instead.
 func (*CreateClusterResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{42}
+	return file_api_mpc_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CreateClusterResponse) GetSuccess() bool {
@@ -2444,7 +2444,7 @@ type AddNodeRequest struct {
 
 func (x *AddNodeRequest) Reset() {
 	*x = AddNodeRequest{}
-	mi := &file_mpc_proto_msgTypes[43]
+	mi := &file_api_mpc_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2456,7 +2456,7 @@ func (x *AddNodeRequest) String() string {
 func (*AddNodeRequest) ProtoMessage() {}
 
 func (x *AddNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[43]
+	mi := &file_api_mpc_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2469,7 +2469,7 @@ func (x *AddNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddNodeRequest.ProtoReflect.Descriptor instead.
 func (*AddNodeRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{43}
+	return file_api_mpc_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *AddNodeRequest) GetClusterId() string {
@@ -2503,7 +2503,7 @@ type AddNodeResponse struct {
 
 func (x *AddNodeResponse) Reset() {
 	*x = AddNodeResponse{}
-	mi := &file_mpc_proto_msgTypes[44]
+	mi := &file_api_mpc_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2515,7 +2515,7 @@ func (x *AddNodeResponse) String() string {
 func (*AddNodeResponse) ProtoMessage() {}
 
 func (x *AddNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[44]
+	mi := &file_api_mpc_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2528,7 +2528,7 @@ func (x *AddNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddNodeResponse.ProtoReflect.Descriptor instead.
 func (*AddNodeResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{44}
+	return file_api_mpc_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *AddNodeResponse) GetSuccess() bool {
@@ -2555,7 +2555,7 @@ type RemoveNodeRequest struct {
 
 func (x *RemoveNodeRequest) Reset() {
 	*x = RemoveNodeRequest{}
-	mi := &file_mpc_proto_msgTypes[45]
+	mi := &file_api_mpc_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2567,7 +2567,7 @@ func (x *RemoveNodeRequest) String() string {
 func (*RemoveNodeRequest) ProtoMessage() {}
 
 func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[45]
+	mi := &file_api_mpc_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2580,7 +2580,7 @@ func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeRequest.ProtoReflect.Descriptor instead.
 func (*RemoveNodeRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{45}
+	return file_api_mpc_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *RemoveNodeRequest) GetClusterId() string {
@@ -2607,7 +2607,7 @@ type RemoveNodeResponse struct {
 
 func (x *RemoveNodeResponse) Reset() {
 	*x = RemoveNodeResponse{}
-	mi := &file_mpc_proto_msgTypes[46]
+	mi := &file_api_mpc_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2619,7 +2619,7 @@ func (x *RemoveNodeResponse) String() string {
 func (*RemoveNodeResponse) ProtoMessage() {}
 
 func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[46]
+	mi := &file_api_mpc_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2632,7 +2632,7 @@ func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeResponse.ProtoReflect.Descriptor instead.
 func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{46}
+	return file_api_mpc_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *RemoveNodeResponse) GetSuccess() bool {
@@ -2659,7 +2659,7 @@ type TriggerResharingRequest struct {
 
 func (x *TriggerResharingRequest) Reset() {
 	*x = TriggerResharingRequest{}
-	mi := &file_mpc_proto_msgTypes[47]
+	mi := &file_api_mpc_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2671,7 +2671,7 @@ func (x *TriggerResharingRequest) String() string {
 func (*TriggerResharingRequest) ProtoMessage() {}
 
 func (x *TriggerResharingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[47]
+	mi := &file_api_mpc_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2684,7 +2684,7 @@ func (x *TriggerResharingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerResharingRequest.ProtoReflect.Descriptor instead.
 func (*TriggerResharingRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{47}
+	return file_api_mpc_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *TriggerResharingRequest) GetClusterId() string {
@@ -2711,7 +2711,7 @@ type TriggerResharingResponse struct {
 
 func (x *TriggerResharingResponse) Reset() {
 	*x = TriggerResharingResponse{}
-	mi := &file_mpc_proto_msgTypes[48]
+	mi := &file_api_mpc_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2723,7 +2723,7 @@ func (x *TriggerResharingResponse) String() string {
 func (*TriggerResharingResponse) ProtoMessage() {}
 
 func (x *TriggerResharingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[48]
+	mi := &file_api_mpc_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2736,7 +2736,7 @@ func (x *TriggerResharingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerResharingResponse.ProtoReflect.Descriptor instead.
 func (*TriggerResharingResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{48}
+	return file_api_mpc_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *TriggerResharingResponse) GetSuccess() bool {
@@ -2762,7 +2762,7 @@ type ClusterStateRequest struct {
 
 func (x *ClusterStateRequest) Reset() {
 	*x = ClusterStateRequest{}
-	mi := &file_mpc_proto_msgTypes[49]
+	mi := &file_api_mpc_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2774,7 +2774,7 @@ func (x *ClusterStateRequest) String() string {
 func (*ClusterStateRequest) ProtoMessage() {}
 
 func (x *ClusterStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[49]
+	mi := &file_api_mpc_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2787,7 +2787,7 @@ func (x *ClusterStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterStateRequest.ProtoReflect.Descriptor instead.
 func (*ClusterStateRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{49}
+	return file_api_mpc_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ClusterStateRequest) GetClusterId() string {
@@ -2810,7 +2810,7 @@ type ClusterStateResponse struct {
 
 func (x *ClusterStateResponse) Reset() {
 	*x = ClusterStateResponse{}
-	mi := &file_mpc_proto_msgTypes[50]
+	mi := &file_api_mpc_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2822,7 +2822,7 @@ func (x *ClusterStateResponse) String() string {
 func (*ClusterStateResponse) ProtoMessage() {}
 
 func (x *ClusterStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[50]
+	mi := &file_api_mpc_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2835,7 +2835,7 @@ func (x *ClusterStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterStateResponse.ProtoReflect.Descriptor instead.
 func (*ClusterStateResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{50}
+	return file_api_mpc_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ClusterStateResponse) GetClusterId() string {
@@ -2885,7 +2885,7 @@ type NodeState struct {
 
 func (x *NodeState) Reset() {
 	*x = NodeState{}
-	mi := &file_mpc_proto_msgTypes[51]
+	mi := &file_api_mpc_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2897,7 +2897,7 @@ func (x *NodeState) String() string {
 func (*NodeState) ProtoMessage() {}
 
 func (x *NodeState) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[51]
+	mi := &file_api_mpc_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2910,7 +2910,7 @@ func (x *NodeState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeState.ProtoReflect.Descriptor instead.
 func (*NodeState) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{51}
+	return file_api_mpc_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *NodeState) GetNodeId() uint32 {
@@ -2951,7 +2951,7 @@ type PolicyRequest struct {
 
 func (x *PolicyRequest) Reset() {
 	*x = PolicyRequest{}
-	mi := &file_mpc_proto_msgTypes[52]
+	mi := &file_api_mpc_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2963,7 +2963,7 @@ func (x *PolicyRequest) String() string {
 func (*PolicyRequest) ProtoMessage() {}
 
 func (x *PolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[52]
+	mi := &file_api_mpc_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2976,7 +2976,7 @@ func (x *PolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRequest.ProtoReflect.Descriptor instead.
 func (*PolicyRequest) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{52}
+	return file_api_mpc_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *PolicyRequest) GetClusterId() string {
@@ -3003,7 +3003,7 @@ type PolicyResponse struct {
 
 func (x *PolicyResponse) Reset() {
 	*x = PolicyResponse{}
-	mi := &file_mpc_proto_msgTypes[53]
+	mi := &file_api_mpc_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3015,7 +3015,7 @@ func (x *PolicyResponse) String() string {
 func (*PolicyResponse) ProtoMessage() {}
 
 func (x *PolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[53]
+	mi := &file_api_mpc_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3028,7 +3028,7 @@ func (x *PolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyResponse.ProtoReflect.Descriptor instead.
 func (*PolicyResponse) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{53}
+	return file_api_mpc_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PolicyResponse) GetSuccess() bool {
@@ -3055,7 +3055,7 @@ type Policy struct {
 
 func (x *Policy) Reset() {
 	*x = Policy{}
-	mi := &file_mpc_proto_msgTypes[54]
+	mi := &file_api_mpc_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3067,7 +3067,7 @@ func (x *Policy) String() string {
 func (*Policy) ProtoMessage() {}
 
 func (x *Policy) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[54]
+	mi := &file_api_mpc_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3080,7 +3080,7 @@ func (x *Policy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Policy.ProtoReflect.Descriptor instead.
 func (*Policy) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{54}
+	return file_api_mpc_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *Policy) GetRules() []*PolicyRule {
@@ -3109,7 +3109,7 @@ type PolicyRule struct {
 
 func (x *PolicyRule) Reset() {
 	*x = PolicyRule{}
-	mi := &file_mpc_proto_msgTypes[55]
+	mi := &file_api_mpc_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3121,7 +3121,7 @@ func (x *PolicyRule) String() string {
 func (*PolicyRule) ProtoMessage() {}
 
 func (x *PolicyRule) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[55]
+	mi := &file_api_mpc_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3134,7 +3134,7 @@ func (x *PolicyRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRule.ProtoReflect.Descriptor instead.
 func (*PolicyRule) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{55}
+	return file_api_mpc_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *PolicyRule) GetName() string {
@@ -3175,7 +3175,7 @@ type RateLimitConfig struct {
 
 func (x *RateLimitConfig) Reset() {
 	*x = RateLimitConfig{}
-	mi := &file_mpc_proto_msgTypes[56]
+	mi := &file_api_mpc_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3187,7 +3187,7 @@ func (x *RateLimitConfig) String() string {
 func (*RateLimitConfig) ProtoMessage() {}
 
 func (x *RateLimitConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_mpc_proto_msgTypes[56]
+	mi := &file_api_mpc_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3200,7 +3200,7 @@ func (x *RateLimitConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RateLimitConfig.ProtoReflect.Descriptor instead.
 func (*RateLimitConfig) Descriptor() ([]byte, []int) {
-	return file_mpc_proto_rawDescGZIP(), []int{56}
+	return file_api_mpc_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *RateLimitConfig) GetMaxRequestsPerMinute() int64 {
@@ -3217,11 +3217,11 @@ func (x *RateLimitConfig) GetMaxValuePerHour() int64 {
 	return 0
 }
 
-var File_mpc_proto protoreflect.FileDescriptor
+var File_api_mpc_proto protoreflect.FileDescriptor
 
-const file_mpc_proto_rawDesc = "" +
+const file_api_mpc_proto_rawDesc = "" +
 	"\n" +
-	"\tmpc.proto\x12\x03mpc\"\x86\x01\n" +
+	"\rapi/mpc.proto\x12\x03mpc\"\x86\x01\n" +
 	"\vInitRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\rR\x06nodeId\x12\x1c\n" +
 	"\tthreshold\x18\x02 \x01(\rR\tthreshold\x12!\n" +
@@ -3499,19 +3499,19 @@ const file_mpc_proto_rawDesc = "" +
 	"\x0fConfigurePolicy\x12\x12.mpc.PolicyRequest\x1a\x13.mpc.PolicyResponseB Z\x1egithub.com/yourorg/hsm/api/genb\x06proto3"
 
 var (
-	file_mpc_proto_rawDescOnce sync.Once
-	file_mpc_proto_rawDescData []byte
+	file_api_mpc_proto_rawDescOnce sync.Once
+	file_api_mpc_proto_rawDescData []byte
 )
 
-func file_mpc_proto_rawDescGZIP() []byte {
-	file_mpc_proto_rawDescOnce.Do(func() {
-		file_mpc_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_mpc_proto_rawDesc), len(file_mpc_proto_rawDesc)))
+func file_api_mpc_proto_rawDescGZIP() []byte {
+	file_api_mpc_proto_rawDescOnce.Do(func() {
+		file_api_mpc_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_mpc_proto_rawDesc), len(file_api_mpc_proto_rawDesc)))
 	})
-	return file_mpc_proto_rawDescData
+	return file_api_mpc_proto_rawDescData
 }
 
-var file_mpc_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
-var file_mpc_proto_goTypes = []any{
+var file_api_mpc_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
+var file_api_mpc_proto_goTypes = []any{
 	(*InitRequest)(nil),              // 0: mpc.InitRequest
 	(*InitResponse)(nil),             // 1: mpc.InitResponse
 	(*StatusRequest)(nil),            // 2: mpc.StatusRequest
@@ -3572,7 +3572,7 @@ var file_mpc_proto_goTypes = []any{
 	nil,                              // 57: mpc.DKGRound2Request.ParticipantSharesEntry
 	nil,                              // 58: mpc.AggregateRequest.PartialSignaturesEntry
 }
-var file_mpc_proto_depIdxs = []int32{
+var file_api_mpc_proto_depIdxs = []int32{
 	57, // 0: mpc.DKGRound2Request.participant_shares:type_name -> mpc.DKGRound2Request.ParticipantSharesEntry
 	58, // 1: mpc.AggregateRequest.partial_signatures:type_name -> mpc.AggregateRequest.PartialSignaturesEntry
 	51, // 2: mpc.ClusterStateResponse.nodes:type_name -> mpc.NodeState
@@ -3642,26 +3642,26 @@ var file_mpc_proto_depIdxs = []int32{
 	0,  // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_mpc_proto_init() }
-func file_mpc_proto_init() {
-	if File_mpc_proto != nil {
+func init() { file_api_mpc_proto_init() }
+func file_api_mpc_proto_init() {
+	if File_api_mpc_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mpc_proto_rawDesc), len(file_mpc_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_mpc_proto_rawDesc), len(file_api_mpc_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
-		GoTypes:           file_mpc_proto_goTypes,
-		DependencyIndexes: file_mpc_proto_depIdxs,
-		MessageInfos:      file_mpc_proto_msgTypes,
+		GoTypes:           file_api_mpc_proto_goTypes,
+		DependencyIndexes: file_api_mpc_proto_depIdxs,
+		MessageInfos:      file_api_mpc_proto_msgTypes,
 	}.Build()
-	File_mpc_proto = out.File
-	file_mpc_proto_goTypes = nil
-	file_mpc_proto_depIdxs = nil
+	File_api_mpc_proto = out.File
+	file_api_mpc_proto_goTypes = nil
+	file_api_mpc_proto_depIdxs = nil
 }

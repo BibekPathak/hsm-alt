@@ -12,7 +12,7 @@ import (
 )
 
 type SignCoordinator interface {
-	Sign(ctx context.Context, msg []byte) ([]byte, error)
+	Sign(ctx context.Context, msg []byte, unsignedTx []byte, rpcURL string) ([]byte, string, error) // returns (signature, txHash, error)
 }
 
 type MPCSolanaSigner struct {
@@ -23,6 +23,7 @@ type MPCSolanaSigner struct {
 	share       []byte
 	connected   bool
 	coordinator SignCoordinator
+	rpcURL      string
 }
 
 func NewMPCSolanaSigner(nodeID uint32, clusterID string, coordinator SignCoordinator) (*MPCSolanaSigner, error) {
@@ -32,6 +33,24 @@ func NewMPCSolanaSigner(nodeID uint32, clusterID string, coordinator SignCoordin
 		coordinator: coordinator,
 		connected:   false,
 	}, nil
+}
+
+func (s *MPCSolanaSigner) SetRPCURL(url string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rpcURL = url
+}
+
+func (s *MPCSolanaSigner) GetRPCURL() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rpcURL
+}
+
+func (s *MPCSolanaSigner) IsMPCBroadcast() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rpcURL != "" && s.coordinator != nil
 }
 
 func (s *MPCSolanaSigner) SetShareAndPublicKey(share, publicKey []byte) {
@@ -51,10 +70,6 @@ func (s *MPCSolanaSigner) IsConnected() bool {
 }
 
 func (s *MPCSolanaSigner) SignTransaction(unsignedTx []byte) ([]byte, error) {
-	return s.SignMessage(unsignedTx)
-}
-
-func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
 	s.mu.RLock()
 	if s.coordinator == nil {
 		s.mu.RUnlock()
@@ -64,6 +79,7 @@ func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
 		s.mu.RUnlock()
 		return nil, fmt.Errorf("MPC signer not initialized: no key share loaded. Run DKG first to generate key shares.")
 	}
+	rpcURL := s.rpcURL
 	pubKey := make([]byte, len(s.publicKey))
 	copy(pubKey, s.publicKey)
 	s.mu.RUnlock()
@@ -71,13 +87,21 @@ func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	signature, err := s.coordinator.Sign(ctx, msg)
+	signature, txHash, err := s.coordinator.Sign(ctx, unsignedTx, unsignedTx, rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("MPC signing failed: %w", err)
 	}
 
 	_ = pubKey
+
+	if txHash != "" {
+		return []byte(txHash), nil
+	}
 	return signature, nil
+}
+
+func (s *MPCSolanaSigner) SignMessage(msg []byte) ([]byte, error) {
+	return s.SignTransaction(msg)
 }
 
 func (s *MPCSolanaSigner) Address() string {
