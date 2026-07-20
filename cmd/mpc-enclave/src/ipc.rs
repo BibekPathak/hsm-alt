@@ -735,6 +735,31 @@ impl Enclave {
             .map_err(|e| e.to_string())
     }
 
+    pub fn refresh_round1(&self, participant_ids: Vec<u32>) -> Result<crypto::RefreshRound1Output, String> {
+        crypto::refresh_generate_evaluations(self.threshold as u16, &participant_ids)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn refresh_apply(&self, received_evaluations: BTreeMap<u32, Vec<u8>>) -> Result<Vec<u8>, String> {
+        let (key_package_bytes, index) = {
+            let share = self.my_share.read();
+            let key_share = share.as_ref().ok_or("Key share not available for refresh")?;
+            (key_share.key_package.clone(), key_share.index)
+        };
+
+        let result = crypto::refresh_apply(&key_package_bytes, &received_evaluations)
+            .map_err(|e| e.to_string())?;
+
+        // Update our key share with the refreshed one
+        let mut share_writer = self.my_share.write();
+        *share_writer = Some(crypto::KeyShare {
+            index,
+            key_package: result.new_key_package,
+        });
+
+        Ok(result.verifying_key)
+    }
+
     pub fn sign_start_session(&self, session_id: String, message: Vec<u8>, participants: Vec<u32>) -> Result<(), String> {
         // Invalidate any existing signing session
         self.invalidate_signing_session();
@@ -1105,6 +1130,30 @@ struct SignAbortResponse {
     error: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct RefreshRound1Request {
+    participant_ids: Vec<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RefreshRound1Response {
+    success: bool,
+    error: String,
+    evaluations: BTreeMap<u32, Vec<u8>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RefreshApplyRequest {
+    received_evaluations: BTreeMap<u32, Vec<u8>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RefreshApplyResponse {
+    success: bool,
+    error: String,
+    verifying_key: Vec<u8>,
+}
+
 async fn initialize(
     State(state): State<AppState>,
     Json(req): Json<InitRequest>,
@@ -1421,6 +1470,48 @@ async fn attest(State(state): State<AppState>) -> Json<AttestResponse> {
     })
 }
 
+async fn refresh_round1(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshRound1Request>,
+) -> Json<RefreshRound1Response> {
+    let enclave = state.enclave.read();
+    match enclave.refresh_round1(req.participant_ids) {
+        Ok(output) => Json(RefreshRound1Response {
+            success: true,
+            error: String::new(),
+            evaluations: output.evaluations,
+        }),
+        Err(e) => Json(RefreshRound1Response {
+            success: false,
+            error: e,
+            evaluations: BTreeMap::new(),
+        }),
+    }
+}
+
+async fn refresh_apply_handler(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshApplyRequest>,
+) -> Json<RefreshApplyResponse> {
+    let result = {
+        let enclave = state.enclave.read();
+        enclave.refresh_apply(req.received_evaluations)
+    };
+
+    match result {
+        Ok(verifying_key) => Json(RefreshApplyResponse {
+            success: true,
+            error: String::new(),
+            verifying_key,
+        }),
+        Err(e) => Json(RefreshApplyResponse {
+            success: false,
+            error: e,
+            verifying_key: vec![],
+        }),
+    }
+}
+
 pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState { enclave };
 
@@ -1444,6 +1535,8 @@ pub async fn run_server(enclave: Arc<RwLock<Enclave>>, port: u16) -> Result<(), 
         .route("/verify", post(verify_signature))
         .route("/public-key", get(get_public_key))
         .route("/attest", get(attest))
+        .route("/refresh/round1", post(refresh_round1))
+        .route("/refresh/apply", post(refresh_apply_handler))
         .layer(cors)
         .with_state(state);
 

@@ -48,6 +48,8 @@ func main() {
 		runSignCommand(args)
 	case "key":
 		runKeyCommand(args)
+	case "reshare":
+		runReshareCommand(args)
 	case "help":
 		printUsage()
 	default:
@@ -64,6 +66,7 @@ func printUsage() {
 	fmt.Println("  mpc-cli dkg [flags]     - Run Distributed Key Generation")
 	fmt.Println("  mpc-cli sign [flags]    - Sign a message using MPC")
 	fmt.Println("  mpc-cli key [flags]     - Key management operations")
+	fmt.Println("  mpc-cli reshare [flags] - Rotate key shares (same-key refresh)")
 	fmt.Println("  mpc-cli help            - Show this help message")
 	fmt.Println("")
 	fmt.Println("DKG Commands:")
@@ -276,6 +279,67 @@ func runKeyStatus() {
 		fmt.Printf("   Run 'mpc-cli dkg init' to generate one\n")
 		os.Exit(1)
 	}
+}
+
+func runReshareCommand(args []string) {
+	reshareCmd := flag.NewFlagSet("reshare", flag.ExitOnError)
+	reshareCmd.StringVar(flagClusterID, "cluster-id", "", "Cluster ID")
+	reshareCmd.StringVar(flagPeers, "peers", "", "Peer addresses (comma-separated)")
+	reshareCmd.UintVar(flagThreshold, "threshold", 2, "Threshold")
+	reshareCmd.UintVar(flagTotalNodes, "total-nodes", 3, "Total nodes")
+	reshareCmd.UintVar(flagNodeID, "node-id", 1, "This node's ID")
+
+	reshareCmd.Parse(args)
+
+	logger := setupLogger()
+
+	password := os.Getenv("MPC_SHARE_PASSWORD")
+	if password == "" {
+		fmt.Fprintf(os.Stderr, "ERROR: MPC_SHARE_PASSWORD environment variable is required\n")
+		os.Exit(1)
+	}
+
+	clusterID := *flagClusterID
+	if clusterID == "" {
+		clusterID = fmt.Sprintf("cluster-%d", time.Now().Unix())
+	}
+
+	peerAddrs := parsePeers(*flagPeers)
+	if len(peerAddrs) < int(*flagTotalNodes)-1 {
+		fmt.Fprintf(os.Stderr, "ERROR: Not enough peers. Need %d, got %d\n", *flagTotalNodes-1, len(peerAddrs))
+		os.Exit(1)
+	}
+
+	cfg := &config.NodeConfig{
+		NodeID:      uint32(*flagNodeID),
+		ClusterID:   clusterID,
+		Threshold:   uint32(*flagThreshold),
+		TotalNodes:  uint32(*flagTotalNodes),
+		ListenAddr:  fmt.Sprintf("localhost:%d", 8000+*flagNodeID),
+		EnclaveAddr: *flagEnclaveAddr,
+		PeerAddrs:   peerAddrs,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	shareStore := mpcnode.NewShareStore(getShareDir())
+	refreshOrch := mpcnode.NewRefreshOrchestrator(cfg, logger, shareStore)
+	defer refreshOrch.Close()
+
+	result, err := refreshOrch.RunRefresh(ctx, password)
+	if err != nil {
+		logger.Error("Share rotation failed", zap.Error(err))
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n✅ Share Rotation Completed!\n")
+	fmt.Printf("   Cluster ID:       %s\n", result.ClusterID)
+	fmt.Printf("   Public Key:       %x\n", result.PublicKey)
+	fmt.Printf("   Threshold:        %d-of-%d\n", result.Threshold, result.TotalNodes)
+	fmt.Printf("   Same Key:         %v\n", result.SameKey)
+	fmt.Printf("   Old share backed up. New shares active.\n")
+	fmt.Printf("   Address unchanged. No fund migration needed.\n")
 }
 
 func parsePeers(peersStr string) map[uint32]string {

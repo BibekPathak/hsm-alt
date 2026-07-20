@@ -451,3 +451,118 @@ impl EpochState {
 pub fn evolve_key(_current_state: &EpochState) -> Result<EpochState> {
     Err(CryptoError::InvalidState("Not implemented".to_string()))
 }
+
+// ========================
+// FROST Key Refresh (same-key share rotation)
+// ========================
+
+/// Output from refresh round 1: evaluations of a zero-constant polynomial at each peer's ID.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RefreshRound1Output {
+    /// Map of peer_id -> evaluation (serialized scalar)
+    pub evaluations: BTreeMap<u32, Vec<u8>>,
+}
+
+/// Output from refresh round 2: the updated key package bytes.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RefreshApplyOutput {
+    pub new_key_package: Vec<u8>,
+    pub verifying_key: Vec<u8>,
+}
+
+/// Generate evaluations of a random zero-constant polynomial for key refresh.
+///
+/// The polynomial P(x) = a₁·x + a₂·x² + ... + aₜ₋₁·xᵗ⁻¹ has P(0) = 0,
+/// which guarantees the group secret remains unchanged after refresh.
+pub fn refresh_generate_evaluations(
+    threshold: u16,
+    participant_ids: &[u32],
+) -> Result<RefreshRound1Output> {
+    use curve25519_dalek::scalar::Scalar;
+
+    // Generate t-1 random coefficients (no constant term → P(0) = 0)
+    let degree = (threshold - 1) as usize;
+    let mut coefficients = Vec::with_capacity(degree);
+    for _ in 0..degree {
+        let mut bytes = [0u8; 64];
+        rand::RngCore::fill_bytes(&mut OsRng, &mut bytes);
+        coefficients.push(Scalar::from_bytes_mod_order_wide(&bytes));
+    }
+
+    // Evaluate P(x) at each participant's identifier
+    let mut evaluations = BTreeMap::new();
+    for &peer_id in participant_ids {
+        // Convert peer_id to a scalar
+        let x = Scalar::from(peer_id as u64);
+
+        // P(x) = a₁·x + a₂·x² + ... + aₜ₋₁·xᵗ⁻¹
+        let mut result = Scalar::ZERO;
+        let mut x_power = x; // x¹
+        for coeff in &coefficients {
+            result += coeff * x_power;
+            x_power *= x;
+        }
+
+        evaluations.insert(peer_id, result.as_bytes().to_vec());
+    }
+
+    Ok(RefreshRound1Output { evaluations })
+}
+
+/// Apply refresh evaluations to an existing key package.
+///
+/// Adds the sum of all received evaluations to the current signing share scalar,
+/// then creates a new KeyPackage with the updated signing share.
+/// The verifying key (public key) remains the same.
+pub fn refresh_apply(
+    key_package_bytes: &[u8],
+    received_evaluations: &BTreeMap<u32, Vec<u8>>,
+) -> Result<RefreshApplyOutput> {
+    use curve25519_dalek::scalar::Scalar;
+    use frost::keys::SigningShare;
+
+    let key_package: KeyPackage = serde_json::from_slice(key_package_bytes).map_err(|e| {
+        CryptoError::InvalidState(format!("Failed to deserialize key package: {:?}", e))
+    })?;
+
+    // Get current signing share scalar
+    let old_scalar = key_package.signing_share().to_scalar();
+
+    // Sum all received evaluation scalars
+    let mut refresh_scalar = Scalar::ZERO;
+    for (_peer_id, eval_bytes) in received_evaluations {
+        let eval_arr: [u8; 32] = eval_bytes.as_slice().try_into().map_err(|_| {
+            CryptoError::InvalidState("Refresh evaluation must be 32 bytes".to_string())
+        })?;
+        let eval_scalar = Scalar::from_canonical_bytes(eval_arr);
+        if eval_scalar.is_none().into() {
+            return Err(CryptoError::InvalidState(
+                "Invalid refresh evaluation scalar".to_string(),
+            ));
+        }
+        refresh_scalar += eval_scalar.unwrap();
+    }
+
+    // New signing share = old + refresh
+    let new_scalar = old_scalar + refresh_scalar;
+    let new_signing_share = SigningShare::new(new_scalar);
+
+    // Reconstruct KeyPackage with same identity but new signing share
+    let new_key_package = KeyPackage::new(
+        *key_package.identifier(),
+        new_signing_share,
+        *key_package.verifying_share(),
+        *key_package.verifying_key(),
+        *key_package.min_signers(),
+    );
+
+    let verifying_key_bytes = new_key_package
+        .verifying_key()
+        .serialize()
+        .map_err(|e| CryptoError::SerializationError(format!("{:?}", e)))?;
+
+    Ok(RefreshApplyOutput {
+        new_key_package: serde_json::to_vec(&new_key_package)?,
+        verifying_key: verifying_key_bytes,
+    })
+}

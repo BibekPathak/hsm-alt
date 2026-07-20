@@ -501,3 +501,45 @@ func (c *Client) GetAttestation(ctx context.Context) ([]byte, []byte, bool, erro
 func (c *Client) Close() error {
 	return nil
 }
+
+func (c *Client) RefreshRound1(ctx context.Context, participantIDs []uint32) (map[uint32][]byte, error) {
+	type Req struct {
+		ParticipantIDs []uint32 `json:"participant_ids"`
+	}
+	type Resp struct {
+		Success     bool              `json:"success"`
+		Error       string            `json:"error"`
+		Evaluations map[uint32][]byte `json:"evaluations"`
+	}
+	req := Req{ParticipantIDs: participantIDs}
+	resp := &Resp{}
+
+	if err := c.doRequest(ctx, "POST", "/refresh/round1", req, resp); err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("refresh round1 failed: %s", resp.Error)
+	}
+	return resp.Evaluations, nil
+}
+
+func (c *Client) RefreshApply(ctx context.Context, receivedEvaluations map[uint32][]byte) ([]byte, error) {
+	type Req struct {
+		ReceivedEvaluations map[uint32][]byte `json:"received_evaluations"`
+	}
+	type Resp struct {
+		Success      bool   `json:"success"`
+		Error        string `json:"error"`
+		VerifyingKey []byte `json:"verifying_key"`
+	}
+	req := Req{ReceivedEvaluations: receivedEvaluations}
+	resp := &Resp{}
+
+	if err := c.doRequest(ctx, "POST", "/refresh/apply", req, resp); err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("refresh apply failed: %s", resp.Error)
+	}
+	return resp.VerifyingKey, nil
+}

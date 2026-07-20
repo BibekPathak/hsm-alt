@@ -266,6 +266,9 @@ func main() {
 	// Fee estimation
 	r.Get("/fee-estimate", server.handleFeeEstimate)
 
+	// Admin routes
+	r.Post("/admin/reshare", server.handleReshare)
+
 	// Start background expiry job
 	go server.runExpiryJob()
 
@@ -1353,6 +1356,77 @@ func (s *Server) runExpiryJob() {
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleReshare(w http.ResponseWriter, r *http.Request) {
+	if !s.mpcEnabled {
+		sendError(w, http.StatusBadRequest, "MPC not enabled")
+		return
+	}
+
+	mpcPeers := os.Getenv("MPC_PEERS")
+	mpcNodeIDStr := os.Getenv("MPC_NODE_ID")
+	mpcNodeID := uint64(1)
+	if mpcNodeIDStr != "" {
+		if id, err := strconv.ParseUint(mpcNodeIDStr, 10, 32); err == nil {
+			mpcNodeID = id
+		}
+	}
+	mpcClusterID := os.Getenv("MPC_CLUSTER_ID")
+	if mpcClusterID == "" {
+		mpcClusterID = "wallet_demo"
+	}
+	mpcThreshold := uint64(2)
+	if tStr := os.Getenv("MPC_THRESHOLD"); tStr != "" {
+		if t, err := strconv.ParseUint(tStr, 10, 32); err == nil {
+			mpcThreshold = t
+		}
+	}
+	mpcPassword := os.Getenv("MPC_SHARE_PASSWORD")
+	if mpcPassword == "" {
+		sendError(w, http.StatusBadRequest, "MPC_SHARE_PASSWORD environment variable required for resharing")
+		return
+	}
+
+	peerAddrs := parseMPCPeers(mpcPeers)
+	reshCfg := &config.NodeConfig{
+		NodeID:     uint32(mpcNodeID),
+		ClusterID:  mpcClusterID,
+		Threshold:  uint32(mpcThreshold),
+		TotalNodes: uint32(len(peerAddrs) + 1),
+		PeerAddrs:  peerAddrs,
+	}
+
+	zapLogger, _ := zap.NewProduction()
+	shareDir := os.Getenv("MPC_SHARE_DIR")
+	if shareDir == "" {
+		homeDir, _ := os.UserHomeDir()
+		shareDir = homeDir + "/.hsm/mpc"
+	}
+	shareStore := mpcnode.NewShareStore(shareDir)
+	refreshOrch := mpcnode.NewRefreshOrchestrator(reshCfg, zapLogger, shareStore)
+	defer refreshOrch.Close()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	result, err := refreshOrch.RunRefresh(ctx, mpcPassword)
+	if err != nil {
+		log.Printf("[RESHARE] ERROR: %v", err)
+		sendError(w, http.StatusInternalServerError, fmt.Sprintf("Share rotation failed: %v", err))
+		return
+	}
+
+	log.Printf("[RESHARE] Same-key share rotation completed: pubkey=%x same_key=%v", result.PublicKey, result.SameKey)
+
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"cluster_id": result.ClusterID,
+		"public_key": fmt.Sprintf("%x", result.PublicKey),
+		"same_key":   result.SameKey,
+		"threshold":  result.Threshold,
+		"total_nodes": result.TotalNodes,
+	})
 }
 
 type mpcSignCoordinator struct {

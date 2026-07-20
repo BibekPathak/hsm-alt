@@ -144,6 +144,25 @@ func (s *ShareStore) ShareExists(nodeID uint32) bool {
 	return err == nil
 }
 
+func (s *ShareStore) BackupShare(nodeID uint32) error {
+	if nodeID == 0 {
+		return fmt.Errorf("node_id cannot be zero")
+	}
+	sharePath := s.GetSharePath(nodeID)
+	backupPath := sharePath + fmt.Sprintf(".backup.%d", time.Now().Unix())
+
+	data, err := os.ReadFile(sharePath)
+	if err != nil {
+		return fmt.Errorf("failed to read share for backup: %w", err)
+	}
+
+	if err := os.WriteFile(backupPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write backup: %w", err)
+	}
+
+	return nil
+}
+
 func (s *ShareStore) GetClusterID(nodeID uint32, password string) (string, error) {
 	if nodeID == 0 {
 		return "", fmt.Errorf("node_id cannot be zero")
